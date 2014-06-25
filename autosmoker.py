@@ -138,11 +138,13 @@ def gpio_callback(gpio_id, val):
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			mySmoker.toggleManualMode()
 	elif (gpio_id == SW1_PIN):	#if manual mode, angle down
-		if (mySmoker.manualServoMode == True):
-			mySmoker.decrementServoAngle(10)
+		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
+			if (mySmoker.manualServoMode == True):
+				mySmoker.decrementServoAngle(10)
 	elif (gpio_id == SW3_PIN):	#if manual mode, angle up
-		if (mySmoker.manualServoMode == True):
-			mySmoker.incrementServoAngle(10)
+		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
+			if (mySmoker.manualServoMode == True):
+				mySmoker.incrementServoAngle(10)
 		
 RPIO.add_interrupt_callback(SW1_PIN, gpio_callback)
 RPIO.add_interrupt_callback(SW2_PIN, gpio_callback)
