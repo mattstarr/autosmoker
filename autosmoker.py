@@ -1,10 +1,26 @@
+#!/usr/bin/python
+
+###############################################################################
+#autosmoker.py - drive smoker door with servo based on manual or temperature 
+#				 input, log temps and position to file
+#6/23/14 - MTS - initial script to handle manual button input and LED output
+#6/25/14 - MTS - added MCP3008 / potentiometer functionality
+#
+#
+# TODO: Currently lots of extra functions. Trim fat when code completed.
+#
+###############################################################################
+
 #imports
-import os, sys
+import spidev
+import os, sys, time
 from yoctopuce.yocto_api import *
 from yoctopuce.yocto_temperature import *
 import RPIO
 from RPIO import PWM
 
+
+##### Servo position / pulse width
 #90 deg L = 600 usec
 #45 deg L = 1050 usec
 #0 deg = 1500 usec
@@ -34,6 +50,9 @@ SW1_PIN = 23
 SW2_PIN = 24
 SW3_PIN = 25
 
+#Input channels for MCP3008
+POT_CHANNEL = 0
+
 #setup I/O
 RPIO.setup(LED1_PIN, RPIO.OUT)
 RPIO.setup(LED2_PIN, RPIO.OUT)
@@ -44,6 +63,28 @@ RPIO.output(LED3_PIN, True)
 RPIO.setup(SW1_PIN, RPIO.IN)
 RPIO.setup(SW2_PIN, RPIO.IN)
 RPIO.setup(SW3_PIN, RPIO.IN)
+###########################################################
+#Borrowed from Matt Hawkins script at: http://www.raspberrypi-spy.co.uk/2013/10/analogue-sensors-on-the-raspberry-pi-using-an-mcp3008/
+# (Creative Commons Attribution-NonCommercial 3.0 License)
+# Open SPI bus
+spi = spidev.SpiDev()
+spi.open(0,0)
+ 
+# Function to read SPI data from MCP3008 chip
+# Channel must be an integer 0-7
+def ReadChannel(channel):
+  adc = spi.xfer2([1,(8+channel)<<4,0])
+  data = ((adc[1]&3) << 8) + adc[2]
+  return data
+ 
+# Function to convert data to voltage level,
+# rounded to specified number of decimal places.
+def ConvertVolts(data,places):
+  volts = (data * 3.3) / float(1023)
+  volts = round(volts,places)
+  return volts
+#End of borrowed code
+###########################################################
 
 def tempCtoF(tempC):  #degrees Celsius to degrees Fahrenheit
 	tempF = tempC * 9 / 5 + 32
@@ -109,6 +150,22 @@ class autoSmoker:
 			self.led3on = False
 			RPIO.output(LED3_PIN, True)
 			
+	def setServoPercent(self, percent): #accepts percent (from 0 - 100)
+			if (percent < 0 ):
+				percent = 0
+				print "input percent < 0. Setting to 0." 
+			if (percent > 100):
+				percent = 100
+				print "input percent > 100. Setting to 100."
+			newServoAngle = int((percent * 0.01) * 180)	
+			self.setServoAngle(newServoAngle)	
+	
+	def setServoFromPot(self, potVoltage): #accepts voltage from potentiometer (0.0 - 3.3v)
+		#0.0v = 0%
+		#3.3v = 100%
+		potPercent = potVoltage * (100/3.3) #invert if pot wanted in opposite orientation
+		self.setServoPercent(potPercent)
+			
 	def incrementServoAngle(self, deg):
 		self.setServoAngle(self.servoAngle + deg)
 		
@@ -140,15 +197,32 @@ def gpio_callback(gpio_id, val):
 	elif (gpio_id == SW1_PIN):	#if manual mode, angle down
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			if (mySmoker.manualServoMode == True):
-				mySmoker.decrementServoAngle(10)
+				#Using pot now.
+				#mySmoker.decrementServoAngle(10)
+				print "Button (-) hit."
 	elif (gpio_id == SW3_PIN):	#if manual mode, angle up
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			if (mySmoker.manualServoMode == True):
-				mySmoker.incrementServoAngle(10)
-		
+				#Using pot now.
+				#mySmoker.incrementServoAngle(10)
+				print "Button (+) hit."
+				
 RPIO.add_interrupt_callback(SW1_PIN, gpio_callback)
 RPIO.add_interrupt_callback(SW2_PIN, gpio_callback)
 RPIO.add_interrupt_callback(SW3_PIN, gpio_callback)			
 			
 #start interrupt thread			
 RPIO.wait_for_interrupts(threaded=True)
+
+DELAY = 0.1 #keep servo response quick by not waiting too long. This delay will also be important
+			#for knowing when to record values (for later plotting)
+
+while (True):
+	if (mySmoker.manualServoMode == True):
+		potLevel = ReadChannel(POT_CHANNEL)
+		potVolts = ConvertVolts(potLevel,2)
+		mySmoker.setServoFromPot(potVolts)
+		#print "pot level:   ", potLevel
+		#print "pot volts:   ", potVolts
+		#print "servo angle: ", mySmoker.servoAngle
+	time.sleep(0.1) 
