@@ -8,17 +8,18 @@
 #
 #
 # TODO: Currently lots of extra functions. Trim fat when code completed.
-#
+# TODO: Consolidate/rearrange consts, vars, functions
 ###############################################################################
 
 #imports
-import spidev
+import spidev #for SPI
 import os, sys, time
 from yoctopuce.yocto_api import *
 from yoctopuce.yocto_temperature import *
 import RPIO
 from RPIO import PWM
-
+import xlwt #for excel output
+from datetime import datetime #for current time
 
 ##### Servo position / pulse width
 #90 deg L = 600 usec
@@ -108,15 +109,15 @@ class autoSmoker:
 		
 	#sensor functions
 	##################################
-	def sensorTempF(sensor):
+	def sensorTempF(self, sensor):
 		if (sensor.isOnline()):
-			return cToF(sensor.get_currentValue())
-			
-	def printTempF():
-		if (self.meatSensor.isOnline()):
-			print "Meat Temp   (F): ", sensorTempF(self.meatSensor)
-		if (self.smokerSensor.isOnline()):
-			print "Smoker Temp (F): ", sensorTempF(self.smokerSensor)
+			return tempCtoF(sensor.get_currentValue())
+
+	def meatTempF(self):
+		return self.sensorTempF(self.meatSensor)
+		
+	def smokerTempF(self):
+		return self.sensorTempF(self.smokerSensor)
 						
 	#servo functions
 	##################################
@@ -186,9 +187,9 @@ class autoSmoker:
 			self.setManualMode(True)
 		else:
 			self.setManualMode(False)
-	
-mySmoker = autoSmoker()
-mySmoker.setServoAngle(90) #make sure it is set half open
+#Test moving this to 'main' section	
+###mySmoker = autoSmoker()
+###mySmoker.setServoAngle(90) #make sure it is set half open
 
 def gpio_callback(gpio_id, val):
 	if (gpio_id == SW2_PIN): #toggle manual mode
@@ -207,6 +208,9 @@ def gpio_callback(gpio_id, val):
 				#mySmoker.incrementServoAngle(10)
 				print "Button (+) hit."
 				
+mySmoker = autoSmoker()
+mySmoker.setServoAngle(90) #make sure it is set half open
+				
 RPIO.add_interrupt_callback(SW1_PIN, gpio_callback)
 RPIO.add_interrupt_callback(SW2_PIN, gpio_callback)
 RPIO.add_interrupt_callback(SW3_PIN, gpio_callback)			
@@ -217,12 +221,50 @@ RPIO.wait_for_interrupts(threaded=True)
 DELAY = 0.1 #keep servo response quick by not waiting too long. This delay will also be important
 			#for knowing when to record values (for later plotting)
 
+###########################################################
+# excel output code learned from:
+# http://stackoverflow.com/questions/13437727/python-write-to-excel-spreadsheet
+###########################################################
+DATE_TIME_COLUMN    = 0
+ELAPSED_TIME_COLUMN = 1
+SMOKER_TEMP_COLUMN  = 2
+MEAT_TEMP_COLUMN    = 3
+SERVO_ANGLE_COLUMN  = 4
+
+def outputXLS(book, sheet, n, dateTime, elapsedTime, smokerTemp, meatTemp, servoAngle):
+	sheet.write(n,DATE_TIME_COLUMN, dateTime)
+	sheet.write(n,ELAPSED_TIME_COLUMN, elapsedTime)
+	sheet.write(n,SMOKER_TEMP_COLUMN, smokerTemp)
+	sheet.write(n,MEAT_TEMP_COLUMN, meatTemp)
+	sheet.write(n,SERVO_ANGLE_COLUMN, servoAngle)
+	book.save('test.xls')
+
+
+xls_book = xlwt.Workbook(encoding="utf-8")
+xls_sheet = xls_book.add_sheet("Sheet 1")
+xls_sheet.write(0,DATE_TIME_COLUMN, "Date/Time")
+xls_sheet.write(0,ELAPSED_TIME_COLUMN, "Elapsed Time")
+xls_sheet.write(0,SMOKER_TEMP_COLUMN, "Smoker Temperature")
+xls_sheet.write(0,MEAT_TEMP_COLUMN, "Meat Temperature")
+xls_sheet.write(0,SERVO_ANGLE_COLUMN, "Servo Angle")
+
+timerCount = 0.0 #for file writing ONLY
+WRITE_INTERVAL = 5 #output to file approximately every 5 seconds
+startTime = time.time()
+			
 while (True):
 	if (mySmoker.manualServoMode == True):
 		potLevel = ReadChannel(POT_CHANNEL)
 		potVolts = ConvertVolts(potLevel,2)
 		mySmoker.setServoFromPot(potVolts)
-		#print "pot level:   ", potLevel
-		#print "pot volts:   ", potVolts
-		#print "servo angle: ", mySmoker.servoAngle
-	time.sleep(0.1) 
+		#debug
+		print "timerCount: ", timerCount
+		myMod = round(timerCount % WRITE_INTERVAL, 1)
+		print "timerCount % WRITE_INTERVAL: ", myMod
+		
+	if (timerCount % WRITE_INTERVAL < DELAY):  #rounding and using 0 is more proper, but this seems more reliable
+		n = int(1+ timerCount / WRITE_INTERVAL)
+		elapsedTime = time.time() - startTime
+		outputXLS(xls_book, xls_sheet, n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle)
+	time.sleep(DELAY)
+	timerCount += DELAY
