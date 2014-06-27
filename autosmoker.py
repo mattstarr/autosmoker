@@ -9,6 +9,9 @@
 #
 # TODO: Currently lots of extra functions. Trim fat when code completed.
 # TODO: Consolidate/rearrange consts, vars, functions
+#
+# excel output code learned from:
+# http://stackoverflow.com/questions/13437727/python-write-to-excel-spreadsheet
 ###############################################################################
 
 #imports
@@ -20,6 +23,7 @@ import RPIO
 from RPIO import PWM
 import xlwt #for excel output
 from datetime import datetime #for current time
+import csv #for csv output
 
 ##### Servo position / pulse width
 #90 deg L = 600 usec
@@ -43,15 +47,16 @@ SERVO_MAX_USEC = 2400
 servo = PWM.Servo()
 
 #input/output (for now)
-LED1_PIN = 17
-LED2_PIN = 22
-LED3_PIN = 27
-SW1_PIN = 23
-SW2_PIN = 24
-SW3_PIN = 25
+LED1_PIN = 17 # manual mode
+LED2_PIN = 22 # recording
+LED3_PIN = 27 # UNUSED (for now)
+SW1_PIN = 23  # start record
+SW2_PIN = 24  # toggle manual mode
+SW3_PIN = 25  # stop record
 
 #Input channels for MCP3008
-POT_CHANNEL = 0
+POT_CHANNEL 		 = 0 # potentiometer input
+AMBIENT_TEMP_CHANNEL = 1 # for later use
 
 #setup I/O
 RPIO.setup(LED1_PIN, RPIO.OUT)
@@ -95,13 +100,13 @@ def gpio_callback(gpio_id, val):
 	if (gpio_id == SW2_PIN): #toggle manual mode
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			mySmoker.toggleManualMode()
-	elif (gpio_id == SW1_PIN):	#if manual mode, angle down
+	elif (gpio_id == SW1_PIN):	
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			global recording
 			recording = True
 			RPIO.output(LED2_PIN, False)
 			
-	elif (gpio_id == SW3_PIN):	#if manual mode, angle up
+	elif (gpio_id == SW3_PIN):	
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			global recording
 			recording = False
@@ -114,7 +119,13 @@ def outputXLS(book, sheet, n, dateTime, elapsedTime, smokerTemp, meatTemp, servo
 	sheet.write(n,MEAT_TEMP_COLUMN, meatTemp)
 	sheet.write(n,SERVO_ANGLE_COLUMN, servoAngle)
 	book.save('test.xls')
-			
+
+#output csv: (http://java.dzone.com/articles/python-101-reading-and-writing)
+def outputCSV(ofilename, outputLine, mode):
+	with open(ofilename, mode) as csv_file:
+		writer = csv.writer(csv_file, delimiter=',')
+		writer.writerow(outputLine)
+	
 class autoSmoker:
 	def __init__(self):
 		#sensor data
@@ -208,25 +219,52 @@ RPIO.add_interrupt_callback(SW3_PIN, gpio_callback)
 #start interrupt thread			
 RPIO.wait_for_interrupts(threaded=True)
 
-recording = False #used by GPIO callback
+#recording = False #used by GPIO callback
+recording = True ##########auto start record for debug!!!!!!!!!!!!!!!
 
-###########################################################
-# excel output code learned from:
-# http://stackoverflow.com/questions/13437727/python-write-to-excel-spreadsheet
-###########################################################
+xls_output_on = False #change to 'True' if desired in addition to csv
+#for excel columns
 DATE_TIME_COLUMN    = 0
 ELAPSED_TIME_COLUMN = 1
 SMOKER_TEMP_COLUMN  = 2
 MEAT_TEMP_COLUMN    = 3
 SERVO_ANGLE_COLUMN  = 4
 
-xls_book = xlwt.Workbook(encoding="utf-8")
-xls_sheet = xls_book.add_sheet("Sheet 1")
-xls_sheet.write(0,DATE_TIME_COLUMN, "Date/Time")
-xls_sheet.write(0,ELAPSED_TIME_COLUMN, "Elapsed Time")
-xls_sheet.write(0,SMOKER_TEMP_COLUMN, "Smoker Temperature")
-xls_sheet.write(0,MEAT_TEMP_COLUMN, "Meat Temperature")
-xls_sheet.write(0,SERVO_ANGLE_COLUMN, "Servo Angle")
+#start xls output:
+if (xls_output_on == True):
+	xls_book = xlwt.Workbook(encoding="utf-8")
+	xls_sheet = xls_book.add_sheet("Sheet 1")
+	xls_sheet.write(0,DATE_TIME_COLUMN, "Date/Time")
+	xls_sheet.write(0,ELAPSED_TIME_COLUMN, "Elapsed Time")
+	xls_sheet.write(0,SMOKER_TEMP_COLUMN, "Smoker Temperature")
+	xls_sheet.write(0,MEAT_TEMP_COLUMN, "Meat Temperature")
+	xls_sheet.write(0,SERVO_ANGLE_COLUMN, "Servo Angle")
+
+########################################
+#Use file to keep track of old csv files	
+last = ""
+# borrowed from http://stackoverflow.com/questions/3346430/most-efficient-way-to-get-first-and-last-line-of-file-python
+with open('tablefile.txt', 'w+') as f:
+    first = f.readline()     # Read the first line.
+    if (len(first) > 0):
+    	f.seek(-2, 2)            # Jump to the second last byte.
+    	while f.read(1) != "\n": # Until EOL is found...
+       	 f.seek(-2, 1)    # ...jump back the read byte plus one more.
+    	last = f.readline()      # Read last line.
+# end borrowed code
+csvtablename = 'test'
+csvfilename = csvtablename + '.csv' 
+if (len(last) > 0):
+	fileIter = 0
+	if (len(last.strip(csvtablename)) > 0):
+		fileIter = int(last.strip(csvtablename))
+	csvtablename += str(fileIter + 1) #increment name
+	csvfilename = csvtablename + '.csv' 	
+# add filename to table file # TODO: add timestamp?
+f = open('tablefile.txt', 'ab') 
+newline = '\n' + csvtablename #makes first line blank on creation, but we don't care -- users arent looking at it
+f.writelines(newline)
+f.close()	
 
 DELAY = 0.1 #keep servo response quick by not waiting too long. This delay will also be important
 			#for knowing when to record values (for later plotting)
@@ -235,17 +273,31 @@ WRITE_INTERVAL = 5 #output to file approximately every 5 seconds
 startCookTime = time.time()
 timerStart = time.time()
 n = 0
+elapsedTime = 0
+desiredCookTime = 30  #TODO: get from user input 
+startNewCSV = True
 			
-while (True):
+while (elapsedTime < desiredCookTime ): #for now...
 	if (mySmoker.manualServoMode == True):
 		potLevel = ReadChannel(POT_CHANNEL)
 		potVolts = ConvertVolts(potLevel,2)
 		mySmoker.setServoFromPot(potVolts)
 	
+	elapsedTime = time.time() - startCookTime # elapsed cook time
 	if (recording == True):
 		if ((time.time() - timerStart) >= WRITE_INTERVAL): #start timer over, record to file 
 			timerStart = time.time() 
 			n += 1
-			elapsedTime = time.time() - startCookTime # elapsed cook time
-			outputXLS(xls_book, xls_sheet, n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle)
+			if (startNewCSV == True):
+				mode = 'wb' 		# write new file (binary)
+				startNewCSV = False # append for rest of run 
+			else:
+				mode = 'ab' # append (binary)
+			currentLine = [n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle]
+			outputCSV(csvfilename, currentLine, mode)
+			#output to xls:
+			if (xls_output_on == True):	
+				outputXLS(xls_book, xls_sheet, n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle)
 	time.sleep(DELAY)
+		
+RPIO.cleanup() # reset pins
