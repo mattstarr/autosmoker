@@ -6,6 +6,7 @@
 #6/23/14 - MTS - initial script to handle manual button input and LED output
 #6/25/14 - MTS - added MCP3008 / potentiometer functionality
 #6/26/14 - MTS - added .xls file output
+#6/27/14 - MTS - added .csv file output, autoincrementing filenames
 #
 # TODO: Currently lots of extra functions. Trim fat when code completed.
 # TODO: Consolidate/rearrange consts, vars, functions
