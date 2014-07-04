@@ -7,12 +7,10 @@
 #6/25/14 - MTS - added MCP3008 / potentiometer functionality
 #6/26/14 - MTS - added .xls file output
 #6/27/14 - MTS - added .csv file output, autoincrementing filenames
+#7/4/14  - MTS - added some web UI interoperability, start thread
 #
 # TODO: Currently lots of extra functions. Trim fat when code completed.
 # TODO: Consolidate/rearrange consts, vars, functions
-#
-# excel output code learned from:
-# http://stackoverflow.com/questions/13437727/python-write-to-excel-spreadsheet
 ###############################################################################
 
 #imports
@@ -22,20 +20,9 @@ from yoctopuce.yocto_api import *
 from yoctopuce.yocto_temperature import *
 import RPIO
 from RPIO import PWM
-import xlwt #for excel output
 from datetime import datetime #for current time
 import csv #for csv output
-
-##### Servo position / pulse width
-#90 deg L = 600 usec
-#45 deg L = 1050 usec
-#0 deg = 1500 usec
-#45 deg R = 1950 usec
-#90 deg R = 2400 usec 
-#from 0 to 180
-#usec = 600 + (10 * deg)
-
-#RPIO.cleanup() # can be used after script to shut off GPIO 
+import thread
 
 #attach yocto device
 errmsg = YRefParam()
@@ -48,27 +35,48 @@ SERVO_MAX_USEC = 2400
 servo = PWM.Servo()
 
 #input/output (for now)
-LED1_PIN = 17 # manual mode
-LED2_PIN = 22 # recording
-LED3_PIN = 27 # UNUSED (for now)
-SW1_PIN = 23  # start record
-SW2_PIN = 24  # toggle manual mode
-SW3_PIN = 25  # stop record
+M_LED_PIN = 17 # UNUSED (for now)
+R_LED_PIN = 22 # recording
+L_LED_PIN = 27 # manual mode
+M_SW_PIN = 23  # start record
+L_SW_PIN = 24  # toggle manual mode
+R_SW_PIN = 25  # stop record
 
 #Input channels for MCP3008
 POT_CHANNEL 		 = 0 # potentiometer input
 AMBIENT_TEMP_CHANNEL = 1 # for later use
 
 #setup I/O
-RPIO.setup(LED1_PIN, RPIO.OUT)
-RPIO.setup(LED2_PIN, RPIO.OUT)
-RPIO.setup(LED3_PIN, RPIO.OUT)
-RPIO.output(LED1_PIN, True)
-RPIO.output(LED2_PIN, True)
-RPIO.output(LED3_PIN, True)
-RPIO.setup(SW1_PIN, RPIO.IN)
-RPIO.setup(SW2_PIN, RPIO.IN)
-RPIO.setup(SW3_PIN, RPIO.IN)
+RPIO.setup(L_LED_PIN, RPIO.OUT)
+RPIO.setup(R_LED_PIN, RPIO.OUT)
+RPIO.setup(M_LED_PIN, RPIO.OUT)
+RPIO.output(L_LED_PIN, True)
+RPIO.output(R_LED_PIN, True)
+RPIO.output(M_LED_PIN, True)
+RPIO.setup(R_SW_PIN, RPIO.IN)
+RPIO.setup(L_SW_PIN, RPIO.IN)
+RPIO.setup(M_SW_PIN, RPIO.IN)
+
+blinkDelay = .25
+#show user that bootup is complete, script has started:
+for i in xrange(1,10):
+	RPIO.output(L_LED_PIN, False)
+	time.sleep(blinkDelay)
+	RPIO.output(L_LED_PIN, True)
+	RPIO.output(M_LED_PIN, False)
+	time.sleep(blinkDelay)
+	RPIO.output(M_LED_PIN, True)
+	RPIO.output(R_LED_PIN, False)
+	time.sleep(blinkDelay)
+	RPIO.output(R_LED_PIN, True)
+
+#leave right LED on:
+RPIO.output(R_LED_PIN, False)
+
+ManualOffSwState = RPIO.input(R_SW_PIN) #set "off" to whatever the toggle switch is at when we start the script
+
+recording = False #used by GPIO callback
+#recording = True ##########auto start record for debug!!!!!!!!!!!!!!!
 ###########################################################
 #Borrowed from Matt Hawkins script at: http://www.raspberrypi-spy.co.uk/2013/10/analogue-sensors-on-the-raspberry-pi-using-an-mcp3008/
 # (Creative Commons Attribution-NonCommercial 3.0 License)
@@ -98,28 +106,19 @@ def tempCtoF(tempC):  #degrees Celsius to degrees Fahrenheit
 
 
 def gpio_callback(gpio_id, val):
-	if (gpio_id == SW2_PIN): #toggle manual mode
+	if (gpio_id == R_SW_PIN): #toggle manual mode
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			mySmoker.toggleManualMode()
-	elif (gpio_id == SW1_PIN):	
+	elif (gpio_id == L_SW_PIN):	
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			global recording
-			recording = True
-			RPIO.output(LED2_PIN, False)
+			smokeData.setRecording(True)
 			
-	elif (gpio_id == SW3_PIN):	
+	elif (gpio_id == M_SW_PIN):	
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			global recording
-			recording = False
-			RPIO.output(LED2_PIN, True)
-
-def outputXLS(book, sheet, n, dateTime, elapsedTime, smokerTemp, meatTemp, servoAngle):
-	sheet.write(n,DATE_TIME_COLUMN, dateTime)
-	sheet.write(n,ELAPSED_TIME_COLUMN, elapsedTime)
-	sheet.write(n,SMOKER_TEMP_COLUMN, smokerTemp)
-	sheet.write(n,MEAT_TEMP_COLUMN, meatTemp)
-	sheet.write(n,SERVO_ANGLE_COLUMN, servoAngle)
-	book.save('test.xls')
+			smokeData.setRecording(False)
+			
 
 #output csv: (http://java.dzone.com/articles/python-101-reading-and-writing)
 def outputCSV(ofilename, outputLine, mode):
@@ -136,7 +135,7 @@ class autoSmoker:
 		self.smokerSensor = YTemperature.FindTemperature("smokerModule.smokerTemp")
 		#servo data
 		##################################
-		self.servoAngle = 90 #initial position is half open. 
+		self.servoAngle = 0 #initial position is closed. 
 		self.servoUsec =  SERVO_MIN_USEC + (self.servoAngle * 10)
 		self.manualServoMode = False
 		self.led1on = False #manual mode
@@ -194,15 +193,15 @@ class autoSmoker:
 		
 	def decrementServoAngle(self, deg):
 		self.setServoAngle(self.servoAngle - deg)
-		
+
 	def setManualMode(self, newModeSetting):
 		self.manualServoMode = newModeSetting
 		if (self.manualServoMode == False):
 			self.led1on = False
-			RPIO.output(LED1_PIN, True)
+			RPIO.output(L_LED_PIN, True)
 		else:
 			self.led1on = True
-			RPIO.output(LED1_PIN, False)
+			RPIO.output(L_LED_PIN, False)
 		
 	def toggleManualMode(self): #to be called by button callback function
 		if (self.manualServoMode == False):
@@ -211,94 +210,68 @@ class autoSmoker:
 			self.setManualMode(False)
 
 mySmoker = autoSmoker()
-mySmoker.setServoAngle(90) #make sure it is set half open
+mySmoker.setServoAngle(0) #make sure it is set closed
 				
-RPIO.add_interrupt_callback(SW1_PIN, gpio_callback)
-RPIO.add_interrupt_callback(SW2_PIN, gpio_callback)
-RPIO.add_interrupt_callback(SW3_PIN, gpio_callback)			
+#RPIO.add_interrupt_callback(R_SW_PIN, gpio_callback)
+RPIO.add_interrupt_callback(L_SW_PIN, gpio_callback)
+RPIO.add_interrupt_callback(M_SW_PIN, gpio_callback)			
 			
 #start interrupt thread			
 RPIO.wait_for_interrupts(threaded=True)
 
-#recording = False #used by GPIO callback
-recording = True ##########auto start record for debug!!!!!!!!!!!!!!!
+class SmokeData:
+	recording = False
+	filename = "default.csv"
+	targetMeatTemp = 145
+	targetSmokerTemp = 225
+	
+	
+	def setRecording(self, newState):
+		self.recording = newState
+	
+	def setFilename(self, newName):
+		self.filename = newName
 
-xls_output_on = False #change to 'True' if desired in addition to csv
-#for excel columns
-DATE_TIME_COLUMN    = 0
-ELAPSED_TIME_COLUMN = 1
-SMOKER_TEMP_COLUMN  = 2
-MEAT_TEMP_COLUMN    = 3
-SERVO_ANGLE_COLUMN  = 4
-
-#start xls output:
-if (xls_output_on == True):
-	xls_book = xlwt.Workbook(encoding="utf-8")
-	xls_sheet = xls_book.add_sheet("Sheet 1")
-	xls_sheet.write(0,DATE_TIME_COLUMN, "Date/Time")
-	xls_sheet.write(0,ELAPSED_TIME_COLUMN, "Elapsed Time")
-	xls_sheet.write(0,SMOKER_TEMP_COLUMN, "Smoker Temperature")
-	xls_sheet.write(0,MEAT_TEMP_COLUMN, "Meat Temperature")
-	xls_sheet.write(0,SERVO_ANGLE_COLUMN, "Servo Angle")
-
-########################################
-#Use file to keep track of old csv files	
-last = ""
-# borrowed from http://stackoverflow.com/questions/3346430/most-efficient-way-to-get-first-and-last-line-of-file-python
-with open('tablefile.txt', 'w+') as f:
-    first = f.readline()     # Read the first line.
-    if (len(first) > 0):
-    	f.seek(-2, 2)            # Jump to the second last byte.
-    	while f.read(1) != "\n": # Until EOL is found...
-       	 f.seek(-2, 1)    # ...jump back the read byte plus one more.
-    	last = f.readline()      # Read last line.
-# end borrowed code
-csvtablename = 'test'
-csvfilename = csvtablename + '.csv' 
-if (len(last) > 0):
-	fileIter = 0
-	if (len(last.strip(csvtablename)) > 0):
-		fileIter = int(last.strip(csvtablename))
-	csvtablename += str(fileIter + 1) #increment name
-	csvfilename = csvtablename + '.csv' 	
-# add filename to table file # TODO: add timestamp?
-f = open('tablefile.txt', 'ab') 
-newline = '\n' + csvtablename #makes first line blank on creation, but we don't care -- users arent looking at it
-f.writelines(newline)
-f.close()	
-
-DELAY = 0.1 #keep servo response quick by not waiting too long. This delay will also be important
+smokeData = SmokeData()
+			
+#while (elapsedTime < desiredCookTime ): #use later for a cook? 
+def startIO(a, b):
+	DELAY = 0.1 #keep servo response quick by not waiting too long. This delay will also be important
 			#for knowing when to record values (for later plotting)
 
-WRITE_INTERVAL = 5 #output to file approximately every 5 seconds
-startCookTime = time.time()
-timerStart = time.time()
-n = 0
-elapsedTime = 0
-desiredCookTime = 30  #TODO: get from user input 
-startNewCSV = True
-			
-while (elapsedTime < desiredCookTime ): #for now...
-	if (mySmoker.manualServoMode == True):
-		potLevel = ReadChannel(POT_CHANNEL)
-		potVolts = ConvertVolts(potLevel,2)
-		mySmoker.setServoFromPot(potVolts)
-	
-	elapsedTime = time.time() - startCookTime # elapsed cook time
-	if (recording == True):
-		if ((time.time() - timerStart) >= WRITE_INTERVAL): #start timer over, record to file 
-			timerStart = time.time() 
-			n += 1
-			if (startNewCSV == True):
-				mode = 'wb' 		# write new file (binary)
-				startNewCSV = False # append for rest of run 
-			else:
-				mode = 'ab' # append (binary)
-			currentLine = [n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle]
-			outputCSV(csvfilename, currentLine, mode)
-			#output to xls:
-			if (xls_output_on == True):	
-				outputXLS(xls_book, xls_sheet, n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle)
-	time.sleep(DELAY)
+	WRITE_INTERVAL = 5 #output to file approximately every 5 seconds
+	startCookTime = time.time()
+	timerStart = time.time()
+	n = 0
+	elapsedTime = 0
+	desiredCookTime = 120  #TODO: get from user input 
+	startNewCSV = True
+	while (True):
+		#added for using toggle switch
+		if (RPIO.input(R_SW_PIN) != ManualOffSwState):
+			mySmoker.setManualMode(True)
+		else:
+			mySmoker.setManualMode(False)
+		if (mySmoker.manualServoMode == True):
+			potLevel = ReadChannel(POT_CHANNEL)
+			potVolts = ConvertVolts(potLevel,2)
+			mySmoker.setServoFromPot(potVolts)
 		
-RPIO.cleanup() # reset pins
+		elapsedTime = time.time() - startCookTime # elapsed cook time
+		if (smokeData.recording == True):
+			RPIO.output(M_LED_PIN, False)
+			if ((time.time() - timerStart) >= WRITE_INTERVAL): #start timer over, record to file 
+				timerStart = time.time() 
+				n += 1
+				if (startNewCSV == True):
+					mode = 'wb' 		# write new file (binary)
+					startNewCSV = False # append for rest of run 
+				else:
+					mode = 'ab' # append (binary)
+				currentLine = [n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle]
+				outputCSV(smokeData.filename, currentLine, mode)
+		else:
+			startCookTime = time.time()	
+			RPIO.output(M_LED_PIN, True)
+		time.sleep(DELAY)
+thread.start_new_thread(startIO, ("Thread-1", 0, ))
