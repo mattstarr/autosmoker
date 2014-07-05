@@ -238,8 +238,10 @@ class SmokeData:
 	filename = "default.csv"
 	targetMeatTemp = 145
 	targetSmokerTemp = 225
-	alertThresholdMinutes = 1	
+	alertThresholdMinutes = 2	
 	email_list = []
+	startCookTime = 0
+	elapsedTime = 0
 	
 	def setTargets(self, newMeatTemp, newSmokerTemp, newThresh):
 		self.targetMeatTemp = newMeatTemp
@@ -254,6 +256,12 @@ class SmokeData:
 	
 	def setFilename(self, newName):
 		self.filename = newName
+	
+	def setStartCookTime(self):
+		self.startCookTime = time.time()
+		
+	def refreshElapsedTime(self):
+		self.elapsedTime = time.time() - self.startCookTime
 	
 	def sendEmail(self, msgSubject, msgBody):
 		if len(self.email_list) > 0: 
@@ -299,10 +307,8 @@ def startIO(a, b):
 			#for knowing when to record values (for later plotting)
 
 	WRITE_INTERVAL = 5 #output to file approximately every 5 seconds
-	startCookTime = time.time()
 	timerStart = time.time()
 	n = 0
-	elapsedTime = 0
 	desiredCookTime = 120  #TODO: get from user input 
 	startNewCSV = True
 	
@@ -319,7 +325,7 @@ def startIO(a, b):
 					
 		if (smokeinfo.recording == True):
 			RPIO.output(M_LED_PIN, False)	
-			elapsedTime = time.time() - startCookTime # elapsed cook time
+			smokeinfo.refreshElapsedTime()
 			if ((time.time() - timerStart) >= WRITE_INTERVAL): #start timer over, record to file 
 				timerStart = time.time() 
 				n += 1
@@ -328,10 +334,10 @@ def startIO(a, b):
 					startNewCSV = False # append for rest of run 
 				else:
 					mode = 'ab' # append (binary)
-				currentLine = [n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle]
+				currentLine = [n, str(datetime.now()), round(smokeinfo.elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle]
 				outputCSV(smokeinfo.filename, currentLine, mode)
 		else:
-			startCookTime = time.time()	#keep moving timer forward until we start
+			smokeinfo.setStartCookTime()	#keep moving timer forward until we start
 			RPIO.output(M_LED_PIN, True)
 				
 		if (meatTempEmailSent == False):
