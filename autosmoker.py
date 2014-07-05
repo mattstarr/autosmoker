@@ -23,6 +23,9 @@ from RPIO import PWM
 from datetime import datetime #for current time
 import csv #for csv output
 import thread
+import smtplib
+from email.MIMEMultipart import MIMEMultipart
+from email.MIMEText import MIMEText
 
 #attach yocto device
 errmsg = YRefParam()
@@ -219,23 +222,79 @@ RPIO.add_interrupt_callback(M_SW_PIN, gpio_callback)
 #start interrupt thread			
 RPIO.wait_for_interrupts(threaded=True)
 
+"""##############################################
+#Email settings (outgoing) - put your settings here
+##############################################"""
+email_smtp_address = 
+email_smtp_port = 587
+email_login_name = 
+email_password = 
+emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
+
 class SmokeData:
+	
+	mailserverquit = False
 	recording = False
 	filename = "default.csv"
 	targetMeatTemp = 145
 	targetSmokerTemp = 225
+	alertThresholdMinutes = 1	
+	email_list = []
 	
+	def setTargets(self, newMeatTemp, newSmokerTemp, newThresh):
+		self.targetMeatTemp = newMeatTemp
+		self.targetSmokerTemp = newSmokerTemp
+		self.alertThresholdMinutes = newThresh
+		
+	def setEmailList(self, newEmailList):
+		self.email_list = newEmailList
 	
 	def setRecording(self, newState):
 		self.recording = newState
 	
 	def setFilename(self, newName):
 		self.filename = newName
-
-smokeData = SmokeData()
+	
+	def sendEmail(self, msgSubject, msgBody):
+		if len(self.email_list) > 0: 
+			fromaddr = email_login_name
+			msg = MIMEMultipart()
+			msg['Subject'] = msgSubject
+			msg['From'] = fromaddr
+			COMMASPACE = ', '
+			msg['To'] = COMMASPACE.join(self.email_list)
+			msg.attach(MIMEText(msgBody, 'plain'))
+			if (self.mailserverquit): #reconnect if we are sending an email after the first
+				emailserver.connect(email_smtp_address, email_smtp_port)
+			emailserver.ehlo()
+			emailserver.starttls()
+			emailserver.ehlo()
+			emailserver.set_debuglevel(True)
+			emailserver.login(email_login_name, email_password)
+			emailserver.sendmail(fromaddr, self.email_list, msg.as_string())
+			emailserver.quit()
+			self.mailserverquit = True #need to reconnect later if we want to send more mail
+		else:
+			print "Error: empty email list" #TODO: make client-viewable later
+	def sendTestEmail(self):
+		subject = "Test Email"
+		body = "If you can read this, that's pretty sweet."
+		self.sendEmail(subject, body)
+	def sendMeatAtTempEmail(self, cookTime):
+		subject = "Meat is done!"
+		minutes = cookTime / 60.0
+		body = "The meat is done!\nThe meat has reached %1.2f degrees (F) after %1.2f minutes. The smoker temperature is %1.2f degrees (F)." % (mySmoker.meatTempF(), minutes, mySmoker.smokerTempF())
+		self.sendEmail(subject, body)
+		
+smokeinfo = SmokeData()
 			
 #while (elapsedTime < desiredCookTime ): #use later for a cook? 
 def startIO(a, b):
+	
+	meatAtTempTime = time.time() #use over time to verify we haven't got a false positive (i.e. probe set on grill while turning meat)
+	meatAtTemp = False
+	meatTempEmailSent = False #set to True after sent so that we aren't bombarding recipient with emails
+	
 	DELAY = 0.1 #keep servo response quick by not waiting too long. This delay will also be important
 			#for knowing when to record values (for later plotting)
 
@@ -246,6 +305,7 @@ def startIO(a, b):
 	elapsedTime = 0
 	desiredCookTime = 120  #TODO: get from user input 
 	startNewCSV = True
+	
 	while (True):
 		#added for using toggle switch
 		if (RPIO.input(R_SW_PIN) != ManualOffSwState):
@@ -256,10 +316,10 @@ def startIO(a, b):
 			potLevel = ReadChannel(POT_CHANNEL)
 			potVolts = ConvertVolts(potLevel,2)
 			mySmoker.setServoFromPot(potVolts)
-		
-		elapsedTime = time.time() - startCookTime # elapsed cook time
-		if (smokeData.recording == True):
-			RPIO.output(M_LED_PIN, False)
+					
+		if (smokeinfo.recording == True):
+			RPIO.output(M_LED_PIN, False)	
+			elapsedTime = time.time() - startCookTime # elapsed cook time
 			if ((time.time() - timerStart) >= WRITE_INTERVAL): #start timer over, record to file 
 				timerStart = time.time() 
 				n += 1
@@ -269,9 +329,22 @@ def startIO(a, b):
 				else:
 					mode = 'ab' # append (binary)
 				currentLine = [n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle]
-				outputCSV(smokeData.filename, currentLine, mode)
+				outputCSV(smokeinfo.filename, currentLine, mode)
 		else:
-			startCookTime = time.time()	
+			startCookTime = time.time()	#keep moving timer forward until we start
 			RPIO.output(M_LED_PIN, True)
+				
+		if (meatTempEmailSent == False):
+			if (mySmoker.meatTempF() >= smokeinfo.targetMeatTemp):
+				if (meatAtTemp == False): #start timer if not started
+					meatAtTemp = True
+					meatAtTempTime = time.time()	
+					print "meat at temp, starting timer"
+				if meatAtTemp and ((time.time() - meatAtTempTime) >= (smokeinfo.alertThresholdMinutes * 60.0)): #meat has been at temp longer than threshhold time
+					print "meat at temp for time"
+					smokeinfo.sendMeatAtTempEmail(elapsedTime) 
+					meatTempEmailSent = True	
+			else: #likely false alarm (or something else happened)
+				meatAtTemp = False
 		time.sleep(DELAY)
 thread.start_new_thread(startIO, ("Thread-1", 0, ))

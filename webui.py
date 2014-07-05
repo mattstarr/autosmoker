@@ -4,19 +4,9 @@
 #imports
 import web
 from web import form
-import smtplib
-from email.MIMEMultipart import MIMEMultipart
-from email.MIMEText import MIMEText
 print "importing autosmoker"
 import autosmoker
 print "import done"
-##############################################
-#Email settings (outgoing)
-email_smtp_address = 'smtp.ipage.com'
-email_smtp_port = 587
-email_login_name = 
-email_password = 
-emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
 
 urls = ('/', 'index')
 render = web.template.render('templates/')
@@ -56,9 +46,6 @@ main_form = form.Form(
 
 #set up some variables...
 email_set = False
-#email_list = []
-email_list = ""
-mailserverquit = False #use to keep track if we have already logged in and out (if so, need to connect differently next time!)
 
 class index:
 		
@@ -68,49 +55,29 @@ class index:
 		
     # POST is called when a web form is submitted
 	def POST(self):
-		global email_list
-		global mailserverquit
 		#figure out form validation and put here later(?)
 		form = main_form(web.input())
 		if form.validates():
 			if form.btn.value == 'set':
 				#parse comma separated email/text addresses:
-				email_list = str(form['Send to:'].value).split(",")
+				emails = str(form['Send to:'].value).split(",")
+				autosmoker.smokeinfo.setEmailList(emails)
 				#email_list = str(form['Send to:'].value)
-				print email_list
+				print autosmoker.smokeinfo.email_list
 			elif form.btn.value == 'test':
-				if len(email_list) > 0: 
-					fromaddr = email_login_name
-					msg = MIMEMultipart()
-					msg['Subject'] = 'test email'
-					msg['From'] = fromaddr
-					COMMASPACE = ', '
-					msg['To'] = COMMASPACE.join(email_list)
-					body = "If you can read this, that's pretty sweet."
-					msg.attach(MIMEText(body, 'plain'))
-					if (mailserverquit): #reconnect if we are sending an email after the first
-						emailserver.connect(email_smtp_address, email_smtp_port)
-					emailserver.ehlo()
-					emailserver.starttls()
-					emailserver.ehlo()
-					emailserver.set_debuglevel(True)
-					emailserver.login(email_login_name, email_password)
-					emailserver.sendmail(fromaddr, email_list, msg.as_string())
-					emailserver.quit()
-					mailserverquit = True #need to reconnect later if we want to send more mail
-				else:
-					print "Error: empty email list" #TODO: make client-viewable later
-				print len(email_list)
-				print str(email_list)
+				autosmoker.smokeinfo.sendTestEmail()
 			elif form.btn.value == 'start':
 				#get the smoker and file rolling!!!
 				target_meat_temp = int(form[meat_prompt].value)
 				target_smoker_temp = int(form[smoker_prompt].value)
 				output_filename = str(form[filename_prompt].value)
+				autosmoker.smokeinfo.setTargets(target_meat_temp, target_smoker_temp, 2) #add thresh input later
+				
 				run_smoker = True
 				#start stuff!
-				autosmoker.smokeData.setFilename(output_filename)
-				autosmoker.smokeData.setRecording(True)
+				autosmoker.smokeinfo.setFilename(output_filename)
+				autosmoker.smokeinfo.setRecording(True)
+				print "setting true"
 			else:
 				print "What button did you even push?!?!"
 			raise web.seeother('/')
