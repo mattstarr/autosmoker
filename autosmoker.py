@@ -41,9 +41,9 @@ servo = PWM.Servo()
 M_LED_PIN = 17 # UNUSED (for now)
 R_LED_PIN = 22 # recording
 L_LED_PIN = 27 # manual mode
-M_SW_PIN = 23  # start record
-L_SW_PIN = 24  # toggle manual mode
-R_SW_PIN = 25  # stop record
+R_SW_PIN = 23  # start record
+M_SW_PIN = 24  # toggle manual mode
+L_SW_PIN = 25  # stop record
 
 #Input channels for MCP3008
 POT_CHANNEL 		 = 0 # potentiometer input
@@ -56,30 +56,38 @@ RPIO.setup(M_LED_PIN, RPIO.OUT)
 RPIO.output(L_LED_PIN, True)
 RPIO.output(R_LED_PIN, True)
 RPIO.output(M_LED_PIN, True)
-RPIO.setup(R_SW_PIN, RPIO.IN)
 RPIO.setup(L_SW_PIN, RPIO.IN)
 RPIO.setup(M_SW_PIN, RPIO.IN)
+RPIO.setup(R_SW_PIN, RPIO.IN)
 
-blinkDelay = .25
+blinkDelaySec = .25
+longBlink = blinkDelaySec
+shortBlink = blinkDelaySec / 2.0
+
 #show user that bootup is complete, script has started:
 for i in xrange(1,10):
 	RPIO.output(L_LED_PIN, False)
-	time.sleep(blinkDelay)
+	time.sleep(longBlink)
 	RPIO.output(L_LED_PIN, True)
 	RPIO.output(M_LED_PIN, False)
-	time.sleep(blinkDelay)
+	time.sleep(longBlink)
 	RPIO.output(M_LED_PIN, True)
 	RPIO.output(R_LED_PIN, False)
-	time.sleep(blinkDelay)
+	time.sleep(longBlink)
 	RPIO.output(R_LED_PIN, True)
-
 #leave right LED on:
 RPIO.output(R_LED_PIN, False)
+		
+ManualOffSwState = RPIO.input(L_SW_PIN) #set "off" to whatever the toggle switch is at when we start the script
 
-ManualOffSwState = RPIO.input(R_SW_PIN) #set "off" to whatever the toggle switch is at when we start the script
+#Use for alerts and/or error codes
+def blinkRLED(IDStr, count, blinkDelay):
+	for i in xrange(1,count):
+		RPIO.output(R_LED_PIN, True)
+		time.sleep(blinkDelay)
+		RPIO.output(R_LED_PIN, False)
+		time.sleep(blinkDelay)
 
-recording = False #used by GPIO callback
-#recording = True ##########auto start record for debug!!!!!!!!!!!!!!!
 ###########################################################
 #Borrowed from Matt Hawkins script at: http://www.raspberrypi-spy.co.uk/2013/10/analogue-sensors-on-the-raspberry-pi-using-an-mcp3008/
 # (Creative Commons Attribution-NonCommercial 3.0 License)
@@ -104,24 +112,22 @@ def ConvertVolts(data,places):
 ###########################################################
 
 def tempCtoF(tempC):  #degrees Celsius to degrees Fahrenheit
-	tempF = tempC * 9 / 5 + 32
+	tempF = tempC * 9.0 / 5.0 + 32.0
 	return tempF
 
 
 def gpio_callback(gpio_id, val):
-	if (gpio_id == R_SW_PIN): #toggle manual mode
+	if (gpio_id == L_SW_PIN): #toggle manual mode
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			mySmoker.toggleManualMode()
-	elif (gpio_id == L_SW_PIN):	
-		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
-			global recording
-			smokeData.setRecording(True)
-			
 	elif (gpio_id == M_SW_PIN):	
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
-			global recording
-			smokeData.setRecording(False)
+			smokeinfo.setRecording(True)
 			
+	elif (gpio_id == R_SW_PIN):	
+		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
+			#smokeinfo.setRecording(False) #turn this off for now.
+			print "Right switch hit."
 
 #output csv: (http://java.dzone.com/articles/python-101-reading-and-writing)
 def outputCSV(ofilename, outputLine, mode):
@@ -215,9 +221,9 @@ class autoSmoker:
 mySmoker = autoSmoker()
 mySmoker.setServoAngle(0) #make sure it is set closed
 				
-#RPIO.add_interrupt_callback(R_SW_PIN, gpio_callback)
-RPIO.add_interrupt_callback(L_SW_PIN, gpio_callback)
-RPIO.add_interrupt_callback(M_SW_PIN, gpio_callback)			
+#RPIO.add_interrupt_callback(L_SW_PIN, gpio_callback)
+RPIO.add_interrupt_callback(M_SW_PIN, gpio_callback)
+RPIO.add_interrupt_callback(R_SW_PIN, gpio_callback)			
 			
 #start interrupt thread			
 RPIO.wait_for_interrupts(threaded=True)
@@ -225,10 +231,10 @@ RPIO.wait_for_interrupts(threaded=True)
 """##############################################
 #Email settings (outgoing) - put your settings here
 ##############################################"""
-email_smtp_address = 
+email_smtp_address = 'smtp.ipage.com'
 email_smtp_port = 587
-email_login_name = 
-email_password = 
+email_login_name = 'autosmoker@mattstarr.net'
+email_password = 'SmokeMeat666' #it's an evil meat smoker...
 emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
 
 class SmokeData:
@@ -238,8 +244,10 @@ class SmokeData:
 	filename = "default.csv"
 	targetMeatTemp = 145
 	targetSmokerTemp = 225
-	alertThresholdMinutes = 1	
+	alertThresholdMinutes = 2	
 	email_list = []
+	startCookTime = 0
+	elapsedTime = 0
 	
 	def setTargets(self, newMeatTemp, newSmokerTemp, newThresh):
 		self.targetMeatTemp = newMeatTemp
@@ -254,6 +262,12 @@ class SmokeData:
 	
 	def setFilename(self, newName):
 		self.filename = newName
+	
+	def setStartCookTime(self):
+		self.startCookTime = time.time()
+		
+	def refreshElapsedTime(self):
+		self.elapsedTime = time.time() - self.startCookTime
 	
 	def sendEmail(self, msgSubject, msgBody):
 		if len(self.email_list) > 0: 
@@ -282,14 +296,21 @@ class SmokeData:
 		self.sendEmail(subject, body)
 	def sendMeatAtTempEmail(self, cookTime):
 		subject = "Meat is done!"
-		minutes = cookTime / 60.0
-		body = "The meat is done!\nThe meat has reached %1.2f degrees (F) after %1.2f minutes. The smoker temperature is %1.2f degrees (F)." % (mySmoker.meatTempF(), minutes, mySmoker.smokerTempF())
+		#from http://stackoverflow.com/questions/775049/python-time-seconds-to-hms
+		m, s = divmod(cookTime, 60)
+		h, m = divmod(m, 60)
+		timestr = "%d:%02d:%02d" % (h, m, s)
+		str1 = "The meat is done!\nThe meat has reached %1.2f degrees (F) after smoking for " % (mySmoker.meatTempF()) 
+		str2 = ". The smoker temperature is %1.2f degrees (F)." % (mySmoker.smokerTempF())
+		str3 = "\nThe target meat temperature was %1.2f degrees (F), and the target smoker temperature was %1.2f degrees (F)." % (self.targetMeatTemp, self.targetSmokerTemp)
+		str4 = "\n\tlogfile: " + self.filename
+		body = str1 + timestr + str2 + str3 + str4
 		self.sendEmail(subject, body)
 		
 smokeinfo = SmokeData()
 			
 #while (elapsedTime < desiredCookTime ): #use later for a cook? 
-def startIO(a, b):
+def startIO(IDStr, b):
 	
 	meatAtTempTime = time.time() #use over time to verify we haven't got a false positive (i.e. probe set on grill while turning meat)
 	meatAtTemp = False
@@ -299,16 +320,14 @@ def startIO(a, b):
 			#for knowing when to record values (for later plotting)
 
 	WRITE_INTERVAL = 5 #output to file approximately every 5 seconds
-	startCookTime = time.time()
 	timerStart = time.time()
 	n = 0
-	elapsedTime = 0
 	desiredCookTime = 120  #TODO: get from user input 
 	startNewCSV = True
 	
 	while (True):
 		#added for using toggle switch
-		if (RPIO.input(R_SW_PIN) != ManualOffSwState):
+		if (RPIO.input(L_SW_PIN) != ManualOffSwState):
 			mySmoker.setManualMode(True)
 		else:
 			mySmoker.setManualMode(False)
@@ -319,7 +338,7 @@ def startIO(a, b):
 					
 		if (smokeinfo.recording == True):
 			RPIO.output(M_LED_PIN, False)	
-			elapsedTime = time.time() - startCookTime # elapsed cook time
+			smokeinfo.refreshElapsedTime()
 			if ((time.time() - timerStart) >= WRITE_INTERVAL): #start timer over, record to file 
 				timerStart = time.time() 
 				n += 1
@@ -328,10 +347,10 @@ def startIO(a, b):
 					startNewCSV = False # append for rest of run 
 				else:
 					mode = 'ab' # append (binary)
-				currentLine = [n, str(datetime.now()), round(elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle]
+				currentLine = [n, str(datetime.now()), round(smokeinfo.elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle]
 				outputCSV(smokeinfo.filename, currentLine, mode)
 		else:
-			startCookTime = time.time()	#keep moving timer forward until we start
+			smokeinfo.setStartCookTime()	#keep moving timer forward until we start
 			RPIO.output(M_LED_PIN, True)
 				
 		if (meatTempEmailSent == False):
@@ -340,9 +359,11 @@ def startIO(a, b):
 					meatAtTemp = True
 					meatAtTempTime = time.time()	
 					print "meat at temp, starting timer"
+					thread.start_new_thread(blinkRLED, ("Thread-2", 10, longBlink ))
 				if meatAtTemp and ((time.time() - meatAtTempTime) >= (smokeinfo.alertThresholdMinutes * 60.0)): #meat has been at temp longer than threshhold time
 					print "meat at temp for time"
-					smokeinfo.sendMeatAtTempEmail(elapsedTime) 
+					thread.start_new_thread(blinkRLED, ("Thread-2", 30, longBlink ))
+					smokeinfo.sendMeatAtTempEmail(smokeinfo.elapsedTime) 
 					meatTempEmailSent = True	
 			else: #likely false alarm (or something else happened)
 				meatAtTemp = False
