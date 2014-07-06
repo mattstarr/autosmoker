@@ -1,4 +1,4 @@
-$def with (form, title, rendertime, smoketimestr, meattemp, smokertemp, manmode, servoangle, doorangle)
+$def with (form, title, rendertime, smoketimestr, meattemp, smokertemp, manmode, servoangle, doorangle, targetmeat, targetsmoker)
 <!doctype html>
 <html>
     <head>
@@ -13,7 +13,9 @@ $def with (form, title, rendertime, smoketimestr, meattemp, smokertemp, manmode,
 		<br/>
 		<p>As of: $rendertime :</p>
 		<p>$smoketimestr</p>
+		<p>$targetmeat</p>
 		<p>Meat probe temperature:   $meattemp degrees (F).</p>
+		<p>$targetsmoker</p>
 		<p>Smoker probe temperature: $smokertemp degrees (F).</p>  
 		<p>$manmode</p>
 		<p>Servo angle: $servoangle degrees.</p>

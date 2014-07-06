@@ -3,6 +3,7 @@
 
 #imports
 from datetime import datetime #for current time
+from datetime import timedelta
 import time
 import web
 from web import form
@@ -55,10 +56,20 @@ class index:
 	def GET(self):
 		rendertime = str(datetime.now())
 		smoketimestr = ""
+		targetmeat = ""
+		targetsmoker = ""
 		if (autosmoker.smokeinfo.elapsedTime == 0):
 			smoketimestr = "Smoke has not been started."
+			targetmeat = "Target meat temperature not yet set."
+			targetsmoker = "Target smoker temperature not yet set."
 		else:
-			smoketimestr = "Elapsed smoke time: %1.2f hours." % (float(autosmoker.smokeinfo.elapsedTime) / 3600.0) 
+			#from http://stackoverflow.com/questions/775049/python-time-seconds-to-hms
+			m, s = divmod(autosmoker.smokeinfo.elapsedTime, 60)
+			h, m = divmod(m, 60)
+			timestr = "%d:%02d:%02d" % (h, m, s)
+			smoketimestr = "Elapsed smoke time: " + timestr
+			targetmeat = "Target meat temperature: %1.2f degrees (F)." % autosmoker.smokeinfo.targetMeatTemp
+			targetsmoker = "Target smoker temperature: %1.2f degrees (F)." % autosmoker.smokeinfo.targetSmokerTemp
 		meattemp = "{:.2f}".format(autosmoker.mySmoker.meatTempF())
 		smokertemp = "{:.2f}".format(autosmoker.mySmoker.smokerTempF())
 		manmode = ""
@@ -70,7 +81,7 @@ class index:
 		doorangle = "{:.2f}".format(float(servoangle) * 0.625) #.625 is ratio of sprockets (10:16)
 		
 		form = main_form()
-		return render.index(form, "Autosmoker Web UI", rendertime, smoketimestr, meattemp, smokertemp, manmode, servoangle, doorangle)
+		return render.index(form, "Autosmoker Web UI", rendertime, smoketimestr, meattemp, smokertemp, manmode, servoangle, doorangle, targetmeat, targetsmoker)
 		
     # POST is called when a web form is submitted
 	def POST(self):
