@@ -38,12 +38,12 @@ SERVO_MAX_USEC = 2400
 servo = PWM.Servo()
 
 #input/output (for now)
-M_LED_PIN = 17 # UNUSED (for now)
-R_LED_PIN = 22 # recording
-L_LED_PIN = 27 # manual mode
-R_SW_PIN = 23  # start record
-M_SW_PIN = 24  # toggle manual mode
-L_SW_PIN = 25  # stop record
+M_LED_PIN = 17 
+R_LED_PIN = 22 
+L_LED_PIN = 27
+R_SW_PIN = 23  
+M_SW_PIN = 24  
+L_SW_PIN = 25  
 
 #Input channels for MCP3008
 POT_CHANNEL 		 = 0 # potentiometer input
@@ -117,10 +117,10 @@ def tempCtoF(tempC):  #degrees Celsius to degrees Fahrenheit
 
 
 def gpio_callback(gpio_id, val):
-	if (gpio_id == L_SW_PIN): #toggle manual mode
+	"""if (gpio_id == L_SW_PIN): #toggle manual mode
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
-			mySmoker.toggleManualMode()
-	elif (gpio_id == M_SW_PIN):	
+			mySmoker.toggleManualMode()"""
+	if (gpio_id == M_SW_PIN):	
 		if (val == False): #switch was pulled low (SOMEONE HIT IT!)
 			smokeinfo.setRecording(True)
 			
@@ -231,10 +231,10 @@ RPIO.wait_for_interrupts(threaded=True)
 """##############################################
 #Email settings (outgoing) - put your settings here
 ##############################################"""
-email_smtp_address = 'smtp.ipage.com'
+email_smtp_address = 
 email_smtp_port = 587
-email_login_name = 'autosmoker@mattstarr.net'
-email_password = 'SmokeMeat666' #it's an evil meat smoker...
+email_login_name = 
+email_password = 
 emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
 
 class SmokeData:
