@@ -19,7 +19,7 @@ class datahandler(threading.Thread):
 	
 	def run(self):
 		while True:
-			webui.currentsmoke.setCurrentTemps(autosmoker.mySmoker.meatTempF(), autosmoker.mySmoker.smokerTempF())
+			webui.currentsmoke.setCurrentTemps(autosmoker.smokeinfo.meatTemp, autosmoker.smokeinfo.smokerTemp)
 			webui.currentsmoke.setServo(autosmoker.mySmoker.servoAngle)
 			webui.currentsmoke.setManual(autosmoker.mySmoker.manualServoMode)
 			if (autosmoker.smokeinfo.recording == False) and (webui.currentsmoke.recording == True):

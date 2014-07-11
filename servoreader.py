@@ -16,7 +16,6 @@ def usecFromDeg(deg):
 def readToServo(): 
 	with open(servofilename, 'r') as servofile:
 		linein = servofile.read()
-		print len(linein)
 		if len(linein) > 0:
 			newPosition = int(linein)
 			return newPosition
