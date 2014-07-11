@@ -358,8 +358,8 @@ class SmokeData:
 		m, s = divmod(cookTime, 60)
 		h, m = divmod(m, 60)
 		timestr = "%d:%02d:%02d" % (h, m, s)
-		str1 = "The meat is done!\nThe meat has reached %1.2f degrees (F) after smoking for " % (mySmoker.meatTempF()) 
-		str2 = ". The smoker temperature is %1.2f degrees (F)." % (mySmoker.smokerTempF())
+		str1 = "The meat is done!\nThe meat has reached %1.2f degrees (F) after smoking for " % (self.meatTemp) 
+		str2 = ". The smoker temperature is %1.2f degrees (F)." % (self.smokerTemp)
 		str3 = "\nThe target meat temperature was %1.2f degrees (F), and the target smoker temperature was %1.2f degrees (F)." % (self.targetMeatTemp, self.targetSmokerTemp)
 		str4 = "\n\tlogfile: " + self.filename
 		body = str1 + timestr + str2 + str3 + str4
@@ -433,7 +433,7 @@ class startIO(threading.Thread):
 			
 			try:
 				if (self.meatTempEmailSent == False):
-					if (mySmoker.meatTempF() >= smokeinfo.targetMeatTemp):
+					if (smokeinfo.meatTemp >= smokeinfo.targetMeatTemp):
 						if (self.meatAtTemp == False): #start timer if not started
 							self.meatAtTemp = True
 							self.meatAtTempTime = time.time()	
