@@ -52,15 +52,15 @@ def writeToServo(position):
 
 writeToServo(0)		
 		
-try:   
-	#attach yocto device
-	writeToLog("Connecting yocto...")
-	errmsg = YRefParam()
-	if YAPI.RegisterHub("usb", errmsg) != YAPI.SUCCESS: #from yocto sample code
-		sys.exit("init error" + str(errmsg))
-except:
-	e = sys.exc_info()[0]
-	writeToLog("Error attaching yocto: " + str(e))
+#try:   
+#attach yocto device
+writeToLog("Connecting yocto...")
+errmsg = YRefParam()
+if YAPI.RegisterHub("usb", errmsg) != YAPI.SUCCESS: #from yocto sample code
+	sys.exit("init error" + str(errmsg))
+#except:
+#	e = sys.exc_info()[0]
+#	writeToLog("Error attaching yocto: " + str(e))
 
 GPIO.setmode(GPIO.BCM)
 
@@ -208,12 +208,20 @@ class autoSmoker:
 	#sensor functions
 	##################################
 	def sensorTempF(self, sensor):
-		if (sensor.isOnline()):
-			return tempCtoF(sensor.get_currentValue())
-		else:
-			writeToLog("Could not get temp from sensor!")
-			return 0
-
+		try:
+			if (sensor.isOnline()):
+				return tempCtoF(sensor.get_currentValue())
+			else:
+				writeToLog("Could not get temp from sensor!")
+				return 0
+		except:
+			e = sys.exc_info()
+			writeToLog("Error: " + str(e))
+			global errmsg
+			errmsg = YRefParam()
+			if YAPI.RegisterHub("usb", errmsg) != YAPI.SUCCESS: #from yocto sample code
+				sys.exit("init error" + str(errmsg))
+	
 	def meatTempF(self):
 		return self.sensorTempF(self.meatSensor)
 		
@@ -344,7 +352,7 @@ class SmokeData:
 				emailserver.quit()
 				self.mailserverquit = True #need to reconnect later if we want to send more mail
 			except:
-				e = sys.exc_info()[0]
+				e = sys.exc_info()
 				writeToLog("Error sending email: " + str(e))
 		else:
 			writeToLog("Did not send email: empty email list") #TODO: make client-viewable later
@@ -389,6 +397,10 @@ class startIO(threading.Thread):
 	
 	def run(self):
 		while (True):
+			global errmsg
+			errmsg = YRefParam()
+			if YAPI.RegisterHub("usb", errmsg) != YAPI.SUCCESS: #from yocto sample code
+				sys.exit("init error" + str(errmsg))
 			#added for safety
 			smokeinfo.getNewTemps()
 			#added for using toggle switch
@@ -410,51 +422,48 @@ class startIO(threading.Thread):
 				e = sys.exc_info()[0]
 				writeToLog("Error during manual positioning of servo: " + str(e))
 		
-			try:
-				if (smokeinfo.recording == True):
-					GPIO.output(M_LED_PIN, False)	
-					smokeinfo.refreshElapsedTime()
-					if ((time.time() - self.timerStart) >= self.WRITE_INTERVAL): #start timer over, record to file 
-						self.timerStart = time.time() 
-						self.n += 1
-						if (self.startNewCSV == True):
-							mode = 'wb' 		# write new file (binary)
-							self.startNewCSV = False # append for rest of run 
-						else:
-							mode = 'ab' # append (binary)
-						currentLine = [self.n, str(datetime.now()), round(smokeinfo.elapsedTime, 2), smokeinfo.smokerTemp, smokeinfo.meatTemp, mySmoker.servoAngle]
-						outputCSV(smokeinfo.filename, currentLine, mode)
-				else:
-					smokeinfo.setStartCookTimeNow()	#keep moving timer forward until we start
-					GPIO.output(M_LED_PIN, True)
-			except:
-				e = sys.exc_info()
-				writeToLog("Error during CSV recording/recording state check: " + str(e))
+			#try:
+			if (smokeinfo.recording == True):
+				GPIO.output(M_LED_PIN, False)	
+				smokeinfo.refreshElapsedTime()
+				if ((time.time() - self.timerStart) >= self.WRITE_INTERVAL): #start timer over, record to file 
+					self.timerStart = time.time() 
+					self.n += 1
+					if (self.startNewCSV == True):
+						mode = 'wb' 		# write new file (binary)
+						self.startNewCSV = False # append for rest of run 
+					else:
+						mode = 'ab' # append (binary)
+					currentLine = [self.n, str(datetime.now()), round(smokeinfo.elapsedTime, 2), smokeinfo.smokerTemp, smokeinfo.meatTemp, mySmoker.servoAngle]
+					outputCSV(smokeinfo.filename, currentLine, mode)
+			else:
+				smokeinfo.setStartCookTimeNow()	#keep moving timer forward until we start
+				GPIO.output(M_LED_PIN, True)
+			#except:
+			#	e = sys.exc_info()
+			#	writeToLog("Error during CSV recording/recording state check: " + str(e))
 			
-			try:
-				if (self.meatTempEmailSent == False):
-					if (smokeinfo.meatTemp >= smokeinfo.targetMeatTemp):
-						if (self.meatAtTemp == False): #start timer if not started
-							self.meatAtTemp = True
-							self.meatAtTempTime = time.time()	
-							writeToLog("Starting timer, meat at: " + str(smokeinfo.meatTemp) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
-							#thread.start_new_thread(blinkRLED, ("Thread-2", 3, longBlink ))
-							b3thread = blinkRLED(3, longBlink)
-							b3thread.start()
-						if self.meatAtTemp and ((time.time() - self.meatAtTempTime) >= (smokeinfo.alertThresholdMinutes * 60.0)): #meat has been at temp longer than threshhold time
-							writeToLog("meat at temp for required time.")
-							#thread.start_new_thread(blinkRLED, ("Thread-2", 30, longBlink ))
-							b30thread = blinkRLED(30, shortBlink)
-							b30thread.start()
-							smokeinfo.sendMeatAtTempEmail(smokeinfo.elapsedTime) 
-							self.meatTempEmailSent = True	
-					else: #likely false alarm (or something else happened)
-						if self.meatAtTemp:
-							writeToLog("Resetting timer (meat below required temp). Meat at: " + str(smokeinfo.meatTemp) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
-							self.meatAtTemp = False
-			except:
-				e = sys.exc_info()
-				writeToLog("Error during meat temp check: " + str(e))
+			#try:
+			if (self.meatTempEmailSent == False):
+				if (smokeinfo.meatTemp >= smokeinfo.targetMeatTemp):
+					if (self.meatAtTemp == False): #start timer if not started
+						self.meatAtTemp = True
+						self.meatAtTempTime = time.time()	
+						writeToLog("Starting timer, meat at: " + str(smokeinfo.meatTemp) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
+						b3thread = blinkRLED(3, longBlink)
+						b3thread.start()
+					if self.meatAtTemp and ((time.time() - self.meatAtTempTime) >= (smokeinfo.alertThresholdMinutes * 60.0)): #meat has been at temp longer than threshhold time
+						writeToLog("meat at temp for required time.")
+						b30thread = blinkRLED(30, shortBlink)
+						b30thread.start()
+						smokeinfo.sendMeatAtTempEmail(smokeinfo.elapsedTime) 
+						self.meatTempEmailSent = True	
+				else: #likely false alarm (or something else happened)
+					if self.meatAtTemp:
+						writeToLog("Resetting timer (meat below required temp). Meat at: " + str(smokeinfo.meatTemp) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
+						self.meatAtTemp = False
+			#except:
+			##	writeToLog("Error during meat temp check: " + str(e))
 			time.sleep(self.DELAY)
 
 	
@@ -464,6 +473,7 @@ try:
 	#thread.daemon = True
 	#thread.setDaemon(True)
 	thread.start()
+	#trythis()
 except:
 	print "DANGER, WILL ROBINSON!!!"
 	e = sys.exc_info()[0]
