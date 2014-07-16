@@ -21,9 +21,9 @@ import spidev #for SPI
 import os, sys, time
 from yoctopuce.yocto_api import *
 from yoctopuce.yocto_temperature import *
-import RPIO
+#import RPIO
 #from RPIO import PWM
-#import RPi.GPIO as RPIO
+import RPi.GPIO as GPIO
 import wiringpi
 
 from datetime import datetime #for current time
@@ -52,25 +52,25 @@ def writeToServo(position):
 
 writeToServo(0)		
 		
-try:   
-	#attach yocto device
-	writeToLog("Connecting yocto...")
-	errmsg = YRefParam()
-	if YAPI.RegisterHub("usb", errmsg) != YAPI.SUCCESS: #from yocto sample code
-		sys.exit("init error" + str(errmsg))
-except:
-	e = sys.exc_info()[0]
-	writeToLog("Error attaching yocto: " + str(e))
+#try:   
+#attach yocto device
+writeToLog("Connecting yocto...")
+errmsg = YRefParam()
+if YAPI.RegisterHub("usb", errmsg) != YAPI.SUCCESS: #from yocto sample code
+	sys.exit("init error" + str(errmsg))
+#except:
+#	e = sys.exc_info()[0]
+#	writeToLog("Error attaching yocto: " + str(e))
 
-RPIO.setmode(RPIO.BCM)
+GPIO.setmode(GPIO.BCM)
 
 #input/output (for now)
-M_LED_PIN = 17 # UNUSED (for now)
-R_LED_PIN = 22 # recording
-L_LED_PIN = 27 # manual mode
-R_SW_PIN = 23  # start record
-M_SW_PIN = 24  # toggle manual mode
-L_SW_PIN = 25  # stop record
+M_LED_PIN = 17 
+R_LED_PIN = 22 
+L_LED_PIN = 27
+R_SW_PIN = 23  
+M_SW_PIN = 24  
+L_SW_PIN = 25  
 
 #Input channels for MCP3008
 POT_CHANNEL 		 = 0 # potentiometer input
@@ -80,15 +80,15 @@ AMBIENT_TEMP_CHANNEL = 1 # for later use
 try:
 	writeToLog("Setting up pin I/O...")
 	#setup I/O
-	RPIO.setup(L_LED_PIN, RPIO.OUT)
-	RPIO.setup(R_LED_PIN, RPIO.OUT)
-	RPIO.setup(M_LED_PIN, RPIO.OUT)
-	RPIO.output(L_LED_PIN, True)
-	RPIO.output(R_LED_PIN, True)
-	RPIO.output(M_LED_PIN, True)
-	RPIO.setup(L_SW_PIN, RPIO.IN)
-	RPIO.setup(M_SW_PIN, RPIO.IN)
-	RPIO.setup(R_SW_PIN, RPIO.IN)
+	GPIO.setup(L_LED_PIN, GPIO.OUT)
+	GPIO.setup(R_LED_PIN, GPIO.OUT)
+	GPIO.setup(M_LED_PIN, GPIO.OUT)
+	GPIO.output(L_LED_PIN, True)
+	GPIO.output(R_LED_PIN, True)
+	GPIO.output(M_LED_PIN, True)
+	GPIO.setup(L_SW_PIN, GPIO.IN)
+	GPIO.setup(M_SW_PIN, GPIO.IN)
+	GPIO.setup(R_SW_PIN, GPIO.IN)
 except:
 	e = sys.exc_info()[0]
 	writeToLog("Error during pin setup: " + str(e))
@@ -101,36 +101,43 @@ try:
 	writeToLog("Performing start-up blink sequence...")
 	#show user that bootup is complete, script has started:
 	for i in xrange(1,10):
-		RPIO.output(L_LED_PIN, False)
+		GPIO.output(L_LED_PIN, False)
 		time.sleep(longBlink)
-		RPIO.output(L_LED_PIN, True)
-		RPIO.output(M_LED_PIN, False)
+		GPIO.output(L_LED_PIN, True)
+		GPIO.output(M_LED_PIN, False)
 		time.sleep(longBlink)
-		RPIO.output(M_LED_PIN, True)
-		RPIO.output(R_LED_PIN, False)
+		GPIO.output(M_LED_PIN, True)
+		GPIO.output(R_LED_PIN, False)
 		time.sleep(longBlink)
-		RPIO.output(R_LED_PIN, True)
+		GPIO.output(R_LED_PIN, True)
 	#leave right LED on:
-	RPIO.output(R_LED_PIN, False)
+	GPIO.output(R_LED_PIN, False)
 except:
 	e = sys.exc_info()[0]
 	writeToLog("Error during start-up blink: " + str(e))
 
 try: #this may have halted us ONCE-- try to catch it again...		
 	writeToLog("Recording initial L_SW_PIN position as off. State: ")
-	ManualOffSwState = RPIO.input(L_SW_PIN) #set "off" to whatever the toggle switch is at when we start the script
+	ManualOffSwState = GPIO.input(L_SW_PIN) #set "off" to whatever the toggle switch is at when we start the script
 	writeToLog(str(ManualOffSwState))
 except:
 	e = sys.exc_info()[0]
 	writeToLog("Error during manual switch state init: " + str(e))
 	
 #Use for alerts and/or error codes
-def blinkRLED(IDStr, count, blinkDelay):
-	for i in xrange(1,count):
-		RPIO.output(R_LED_PIN, True)
-		time.sleep(blinkDelay)
-		RPIO.output(R_LED_PIN, False)
-		time.sleep(blinkDelay)
+
+class blinkRLED(threading.Thread):
+
+	def __init__(self, count, blinkDelay):
+		threading.Thread.__init__(self)	
+		self.my_count = count
+		self.my_blink_delay = blinkDelay
+	def run(self):
+		for i in xrange(1,self.my_count):
+			GPIO.output(R_LED_PIN, True)
+			time.sleep(self.my_blink_delay)
+			GPIO.output(R_LED_PIN, False)
+			time.sleep(self.my_blink_delay)
 
 ###########################################################
 #Borrowed from Matt Hawkins script at: http://www.raspberrypi-spy.co.uk/2013/10/analogue-sensors-on-the-raspberry-pi-using-an-mcp3008/
@@ -166,7 +173,7 @@ def tempCtoF(tempC):  #degrees Celsius to degrees Fahrenheit
 	return tempF
 
 
-def rpio_callback(GPIO_id, val):
+def GPIO_callback(GPIO_id, val):
 	#checking state during run instead, currently not using callback for toggle switch
 	#if (GPIO_id == L_SW_PIN): #toggle manual mode
 	#	if (val == False): #switch was pulled low (SOMEONE HIT IT!)
@@ -201,12 +208,20 @@ class autoSmoker:
 	#sensor functions
 	##################################
 	def sensorTempF(self, sensor):
-		if (sensor.isOnline()):
-			return tempCtoF(sensor.get_currentValue())
-		else:
-			writeToLog("Could not get temp from sensor!")
-			return 0
-
+		try:
+			if (sensor.isOnline()):
+				return tempCtoF(sensor.get_currentValue())
+			else:
+				writeToLog("Could not get temp from sensor!")
+				return 0
+		except:
+			e = sys.exc_info()
+			writeToLog("Error: " + str(e))
+			global errmsg
+			errmsg = YRefParam()
+			if YAPI.RegisterHub("usb", errmsg) != YAPI.SUCCESS: #from yocto sample code
+				sys.exit("init error" + str(errmsg))
+	
 	def meatTempF(self):
 		return self.sensorTempF(self.meatSensor)
 		
@@ -251,10 +266,10 @@ class autoSmoker:
 		self.manualServoMode = newModeSetting
 		if (self.manualServoMode == False):
 			self.led1on = False
-			RPIO.output(L_LED_PIN, True)
+			GPIO.output(L_LED_PIN, True)
 		else:
 			self.led1on = True
-			RPIO.output(L_LED_PIN, False)
+			GPIO.output(L_LED_PIN, False)
 		
 	def toggleManualMode(self): #to be called by button callback function
 		if (self.manualServoMode == False):
@@ -266,11 +281,11 @@ mySmoker = autoSmoker()
 mySmoker.setServoAngle(0) #make sure it is set closed
 			
 #RPIO.add_interrupt_callback(L_SW_PIN, rpio_callback) #checking state during run instead
-RPIO.add_interrupt_callback(M_SW_PIN, rpio_callback)
-RPIO.add_interrupt_callback(R_SW_PIN, rpio_callback)			
+#RPIO.add_interrupt_callback(M_SW_PIN, rpio_callback)
+#RPIO.add_interrupt_callback(R_SW_PIN, rpio_callback)			
 			
 #start interrupt thread			
-RPIO.wait_for_interrupts(threaded=True)
+#RPIO.wait_for_interrupts(threaded=True)
 
 
 """##############################################
@@ -284,6 +299,8 @@ emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
 
 class SmokeData:
 	
+	meatTemp = 0
+	smokerTemp = 0
 	mailserverquit = False
 	recording = False
 	filename = "smokelog" + startdts + ".csv"
@@ -335,7 +352,7 @@ class SmokeData:
 				emailserver.quit()
 				self.mailserverquit = True #need to reconnect later if we want to send more mail
 			except:
-				e = sys.exc_info()[0]
+				e = sys.exc_info()
 				writeToLog("Error sending email: " + str(e))
 		else:
 			writeToLog("Did not send email: empty email list") #TODO: make client-viewable later
@@ -349,12 +366,16 @@ class SmokeData:
 		m, s = divmod(cookTime, 60)
 		h, m = divmod(m, 60)
 		timestr = "%d:%02d:%02d" % (h, m, s)
-		str1 = "The meat is done!\nThe meat has reached %1.2f degrees (F) after smoking for " % (mySmoker.meatTempF()) 
-		str2 = ". The smoker temperature is %1.2f degrees (F)." % (mySmoker.smokerTempF())
+		str1 = "The meat is done!\nThe meat has reached %1.2f degrees (F) after smoking for " % (self.meatTemp) 
+		str2 = ". The smoker temperature is %1.2f degrees (F)." % (self.smokerTemp)
 		str3 = "\nThe target meat temperature was %1.2f degrees (F), and the target smoker temperature was %1.2f degrees (F)." % (self.targetMeatTemp, self.targetSmokerTemp)
 		str4 = "\n\tlogfile: " + self.filename
 		body = str1 + timestr + str2 + str3 + str4
 		self.sendEmail(subject, body)
+	
+	def getNewTemps(self):
+		self.meatTemp = mySmoker.meatTempF()
+		self.smokerTemp = mySmoker.smokerTempF()
 		
 smokeinfo = SmokeData()
 			
@@ -376,9 +397,15 @@ class startIO(threading.Thread):
 	
 	def run(self):
 		while (True):
+			global errmsg
+			errmsg = YRefParam()
+			if YAPI.RegisterHub("usb", errmsg) != YAPI.SUCCESS: #from yocto sample code
+				sys.exit("init error" + str(errmsg))
+			#added for safety
+			smokeinfo.getNewTemps()
 			#added for using toggle switch
 			try:
-				if (RPIO.input(L_SW_PIN) != ManualOffSwState):
+				if (GPIO.input(L_SW_PIN) != ManualOffSwState):
 					mySmoker.setManualMode(True)
 				else:
 					mySmoker.setManualMode(False)
@@ -395,47 +422,48 @@ class startIO(threading.Thread):
 				e = sys.exc_info()[0]
 				writeToLog("Error during manual positioning of servo: " + str(e))
 		
-			try:
-				if (smokeinfo.recording == True):
-					RPIO.output(M_LED_PIN, False)	
-					smokeinfo.refreshElapsedTime()
-					if ((time.time() - self.timerStart) >= self.WRITE_INTERVAL): #start timer over, record to file 
-						self.timerStart = time.time() 
-						self.n += 1
-						if (self.startNewCSV == True):
-							mode = 'wb' 		# write new file (binary)
-							self.startNewCSV = False # append for rest of run 
-						else:
-							mode = 'ab' # append (binary)
-						currentLine = [self.n, str(datetime.now()), round(smokeinfo.elapsedTime, 2), mySmoker.smokerTempF(), mySmoker.meatTempF(), mySmoker.servoAngle]
-						outputCSV(smokeinfo.filename, currentLine, mode)
-				else:
-					smokeinfo.setStartCookTimeNow()	#keep moving timer forward until we start
-					RPIO.output(M_LED_PIN, True)
-			except:
-				e = sys.exc_info()
-				writeToLog("Error during CSV recording/recording state check: " + str(e))
+			#try:
+			if (smokeinfo.recording == True):
+				GPIO.output(M_LED_PIN, False)	
+				smokeinfo.refreshElapsedTime()
+				if ((time.time() - self.timerStart) >= self.WRITE_INTERVAL): #start timer over, record to file 
+					self.timerStart = time.time() 
+					self.n += 1
+					if (self.startNewCSV == True):
+						mode = 'wb' 		# write new file (binary)
+						self.startNewCSV = False # append for rest of run 
+					else:
+						mode = 'ab' # append (binary)
+					currentLine = [self.n, str(datetime.now()), round(smokeinfo.elapsedTime, 2), smokeinfo.smokerTemp, smokeinfo.meatTemp, mySmoker.servoAngle]
+					outputCSV(smokeinfo.filename, currentLine, mode)
+			else:
+				smokeinfo.setStartCookTimeNow()	#keep moving timer forward until we start
+				GPIO.output(M_LED_PIN, True)
+			#except:
+			#	e = sys.exc_info()
+			#	writeToLog("Error during CSV recording/recording state check: " + str(e))
 			
-			try:
-				if (self.meatTempEmailSent == False):
-					if (mySmoker.meatTempF() >= smokeinfo.targetMeatTemp):
-						if (self.meatAtTemp == False): #start timer if not started
-							self.meatAtTemp = True
-							self.meatAtTempTime = time.time()	
-							writeToLog("Starting timer, meat at: " + str(mySmoker.meatTempF()) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
-							#thread.start_new_thread(blinkRLED, ("Thread-2", 3, longBlink ))
-						if self.meatAtTemp and ((time.time() - self.meatAtTempTime) >= (smokeinfo.alertThresholdMinutes * 60.0)): #meat has been at temp longer than threshhold time
-							writeToLog("meat at temp for required time.")
-							#thread.start_new_thread(blinkRLED, ("Thread-2", 30, longBlink ))
-							smokeinfo.sendMeatAtTempEmail(smokeinfo.elapsedTime) 
-							self.meatTempEmailSent = True	
-					else: #likely false alarm (or something else happened)
-						if self.meatAtTemp:
-							writeToLog("Resetting timer (meat below required temp). Meat at: " + str(mySmoker.meatTempF()) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
-							self.meatAtTemp = False
-			except:
-				e = sys.exc_info()
-				writeToLog("Error during meat temp check: " + str(e))
+			#try:
+			if (self.meatTempEmailSent == False):
+				if (smokeinfo.meatTemp >= smokeinfo.targetMeatTemp):
+					if (self.meatAtTemp == False): #start timer if not started
+						self.meatAtTemp = True
+						self.meatAtTempTime = time.time()	
+						writeToLog("Starting timer, meat at: " + str(smokeinfo.meatTemp) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
+						b3thread = blinkRLED(3, longBlink)
+						b3thread.start()
+					if self.meatAtTemp and ((time.time() - self.meatAtTempTime) >= (smokeinfo.alertThresholdMinutes * 60.0)): #meat has been at temp longer than threshhold time
+						writeToLog("meat at temp for required time.")
+						b30thread = blinkRLED(30, shortBlink)
+						b30thread.start()
+						smokeinfo.sendMeatAtTempEmail(smokeinfo.elapsedTime) 
+						self.meatTempEmailSent = True	
+				else: #likely false alarm (or something else happened)
+					if self.meatAtTemp:
+						writeToLog("Resetting timer (meat below required temp). Meat at: " + str(smokeinfo.meatTemp) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
+						self.meatAtTemp = False
+			#except:
+			##	writeToLog("Error during meat temp check: " + str(e))
 			time.sleep(self.DELAY)
 
 	
@@ -445,6 +473,7 @@ try:
 	#thread.daemon = True
 	#thread.setDaemon(True)
 	thread.start()
+	#trythis()
 except:
 	print "DANGER, WILL ROBINSON!!!"
 	e = sys.exc_info()[0]

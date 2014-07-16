@@ -16,18 +16,22 @@ def usecFromDeg(deg):
 def readToServo(): 
 	with open(servofilename, 'r') as servofile:
 		linein = servofile.read()
-		print len(linein)
 		if len(linein) > 0:
 			newPosition = int(linein)
 			return newPosition
 		else:
 			print "error, using old value!"
 			return degree
-DELAY = 0.1
+DELAY = 0.3
 degree = 0	   
+olddegree = 0
 	   
 while True:
 	degree = readToServo()
-	servoUsec = usecFromDeg(degree)
-	servo.set_servo(SERVO_PIN, servoUsec)
+	if (abs(degree - olddegree) > 4) or ((abs(degree - olddegree) > 1) and ((degree == 0) or (degree == 180))):
+		olddegree = degree
+		servoUsec = usecFromDeg(degree)
+		servo.set_servo(SERVO_PIN, servoUsec)
+		time.sleep(DELAY)
+		servo.stop_servo(SERVO_PIN)
 	time.sleep(DELAY)
