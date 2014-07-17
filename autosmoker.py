@@ -321,8 +321,8 @@ mySmoker.setServoAngle(0) #make sure it is set closed
 ##############################################"""
 email_smtp_address = 'smtp.ipage.com'
 email_smtp_port = 587
-email_login_name = 'autosmoker@mattstarr.net'
-email_password = 'SmokeMeat321' 
+email_login_name = 'youremailaddresshere'
+email_password = 'yourpasswordhere' 
 emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
 
 class SmokeData:
