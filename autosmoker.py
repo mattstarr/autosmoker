@@ -33,6 +33,17 @@ import smtplib
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEText import MIMEText
 
+"""##############################################
+#Email settings (outgoing) - put your settings here
+##############################################"""
+email_smtp_address = 
+email_smtp_port = 587
+email_login_name = 
+email_password = 
+emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
+
+
+
 def getDTS():
 	return time.strftime("%d/%m/%y %H:%M:%S")
 	
@@ -315,16 +326,6 @@ mySmoker.setServoAngle(0) #make sure it is set closed
 #start interrupt thread			
 #RPIO.wait_for_interrupts(threaded=True)
 
-
-"""##############################################
-#Email settings (outgoing) - put your settings here
-##############################################"""
-email_smtp_address = 'smtp.ipage.com'
-email_smtp_port = 587
-email_login_name = 'youremailaddresshere'
-email_password = 'yourpasswordhere' 
-emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
-
 class SmokeData:
 	
 	meatTemp = 0
@@ -339,6 +340,10 @@ class SmokeData:
 	startCookTime = 0
 	elapsedTime = 0
 	tsThresh = 12.5 #target smoker temp threshold -- window for each position will be 2* this number
+	webManual = False
+	
+	def setWebManual(self, newMan):
+		self.webManual = newMan
 		
 	def setTargets(self, newMeatTemp, newSmokerTemp, newThresh):
 		self.targetMeatTemp = newMeatTemp
@@ -375,7 +380,7 @@ class SmokeData:
 					emailserver.connect(email_smtp_address, email_smtp_port)
 				emailserver.starttls()
 				#emailserver.ehlo()
-				#emailserver.set_debuglevel(True)
+				emailserver.set_debuglevel(True)
 				emailserver.login(email_login_name, email_password)
 				emailserver.sendmail(fromaddr, self.email_list, msg.as_string())
 				emailserver.quit()
@@ -476,32 +481,39 @@ class startIO(threading.Thread):
 					outputCSV(smokeinfo.filename, currentLine, mode)
 					
 				#automation time!
-				if (mySmoker.manualServoMode == False):
-					#quench
-					if (smokeinfo.smokerTemp > (smokeinfo.targetSmokerTemp + (3.0 * smokeinfo.tsThresh))):
-						newPosition = 1
-					#lower temp
-					elif (smokeinfo.smokerTemp > (smokeinfo.targetSmokerTemp + smokeinfo.tsThresh)) and (smokeinfo.smokerTemp <= (smokeinfo.targetSmokerTemp + (3.0 * smokeinfo.tsThresh))):
-						newPosition = 2
-					#hold
-					elif (smokeinfo.smokerTemp >= (smokeinfo.targetSmokerTemp - smokeinfo.tsThresh)) and (smokeinfo.smokerTemp <= (smokeinfo.targetSmokerTemp + smokeinfo.tsThresh)):
+				if (mySmoker.manualServoMode == False) and (smokeinfo.webManual == False):
+					#hold at 45 degrees for first 5 minutes.
+					if (smokeinfo.elapsedTime < 300):
 						newPosition = 3
-					#raise
-					elif (smokeinfo.smokerTemp >= (smokeinfo.targetSmokerTemp - (3.0 * smokeinfo.tsThresh))) and (smokeinfo.smokerTemp < (smokeinfo.targetSmokerTemp - smokeinfo.tsThresh)):
-						newPosition = 4
-					#"revive" fire
-					elif (smokeinfo.smokerTemp < (smokeinfo.targetSmokerTemp - (3.0 * smokeinfo.tsThresh))):
-						newPosition = 5
-					#???
 					else:
-						writeToLog("Logic error in automation...")
+						#set position based on temp
+						if (smokeinfo.smokerTemp > (smokeinfo.targetSmokerTemp + (3.0 * smokeinfo.tsThresh))):
+							#quench
+							newPosition = 1
+						elif (smokeinfo.smokerTemp > (smokeinfo.targetSmokerTemp + smokeinfo.tsThresh)) and (smokeinfo.smokerTemp <= (smokeinfo.targetSmokerTemp + (3.0 * smokeinfo.tsThresh))):
+							#lower temp
+							newPosition = 2
+						elif (smokeinfo.smokerTemp >= (smokeinfo.targetSmokerTemp - smokeinfo.tsThresh)) and (smokeinfo.smokerTemp <= (smokeinfo.targetSmokerTemp + smokeinfo.tsThresh)):
+							#hold
+							newPosition = 3
+						elif (smokeinfo.smokerTemp >= (smokeinfo.targetSmokerTemp - (3.0 * smokeinfo.tsThresh))) and (smokeinfo.smokerTemp < (smokeinfo.targetSmokerTemp - smokeinfo.tsThresh)):
+							#raise
+							newPosition = 4
+						elif (smokeinfo.smokerTemp < (smokeinfo.targetSmokerTemp - (3.0 * smokeinfo.tsThresh))):
+							#"revive" fire
+							newPosition = 5
+						else:
+							#???
+							writeToLog("Logic error in automation...")
 												
 					if (newPosition != position):
 						position = newPosition
-						writeToLog("Target temp: " + str(smokeinfo.targetSmokerTemp))
-						writeToLog("Actual temp: " + str(smokeinfo.smokerTemp))
+						writeToLog("Target smoker temp: " + str(smokeinfo.targetSmokerTemp))
+						writeToLog("Actual smoker temp: " + str(smokeinfo.smokerTemp))
 						writeToLog("Setting position auto to: " + str(position))
 						mySmoker.setServoFromAutomation(position)
+				else:
+					position = 0 #so that we can resume 5 min startup or other auto position
 			else:
 				smokeinfo.setStartCookTimeNow()	#keep moving timer forward until we start
 				GPIO.output(M_LED_PIN, True)

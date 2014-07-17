@@ -17,6 +17,8 @@ app = web.application(urls, globals())
 meat_prompt = 'Target Meat Temp (F):'
 smoker_prompt = 'Target Smoker Temp (F):'
 filename_prompt = 'Output Filename:' 
+webmanual_prompt = 'Manual Door Angle:'
+radio_prompt='Mode:'
 
 startdts = time.strftime("%d%m%y%H%M") #date/time string (minus second)
 
@@ -24,8 +26,10 @@ class infoHandler:
 	#from autosmoker to webui (mostly)
 	meat_temp = 0
 	smoker_temp = 0
+	web_manual_angle = 0
 	servo = 0
 	manual = False
+	radio = 'auto' #manual entry on webpage. cannot override manual switch
 	startCookTime = 0
 	#from webui to smoker (mostly)
 	target_meat = 160
@@ -36,6 +40,35 @@ class infoHandler:
 	changeTargets = True
 	changeEmails = False
 	sprocket = "A"
+	
+	def getDoorAngle(self):
+		sprmult = 0
+		if (self.sprocket == 'A'):
+			sprmult = 0.625
+		else:
+			sprmult = 10/24
+		if (self.manual == False) and (self.radio == 'manual'):
+			return int(self.web_manual_angle)
+		else:
+			return (sprmult * self.servo)
+	
+	def setWebManual(self, newMan, newWebManualAngle):
+		self.web_manual_angle = newWebManualAngle
+		self.radio = newMan
+		if (self.manual == False) and (self.radio == 'manual'):
+			if (self.web_manual_angle <= 0):
+				self.web_manual_angle = 0
+				self.servo = 0
+			elif self.sprocket == 'A': #16 toother
+				self.servo = int(1.6 * self.web_manual_angle)
+				if self.servo > 180:
+					self.web_manual_angle = int(180.0 * 0.625)
+					self.servo = 180
+			else: #24 toother
+				self.servo = int(2.4 * self.web_manual_angle)
+				if self.servo > 180:
+					self.web_manual_angle = 75
+					self.servo = 180
 	
 	def setSprocket(self, newSprocket):
 		self.sprocket = newSprocket
@@ -102,7 +135,15 @@ main_form = form.Form(
 		form.Validator('Must be a number', lambda x: not x or int(x) > 0),
 		id="txtTargetSmokerTemp",
 		value=str(currentsmoke.target_smoker)),	
-	form.Button('btn', id="btnStart", value="start", html="Start + Record")
+	form.Button('btn', id="btnStart", value="start", html="Start + Record"),
+	form.Radio('radio',[('auto','Automatic'),('manual','Manual')],description="Mode:",value=currentsmoke.radio),
+		form.Textbox(webmanual_prompt, 
+			form.notnull, 
+			form.regexp('\d+', 'Angle must be a digit!'),
+			form.Validator('Must be a number', lambda x: not x or int(x) >= 0),
+			id="txtWebManualAngle",
+			value=str(currentsmoke.getDoorAngle())),	
+		form.Button('btn', id="btnNewSettings", value="newsettings", html="Enter Settings")
 )
 
 
@@ -133,7 +174,15 @@ def getMainForm():
 			form.Validator('Must be a number', lambda x: not x or int(x) > 0),
 			id="txtTargetSmokerTemp",
 			value=str(currentsmoke.target_smoker)),	
-		form.Button('btn', id="btnStart", value="start", html="Start + Record")
+		form.Button('btn', id="btnStart", value="start", html="Start + Record"),
+		form.Radio('radio',[('auto','Automatic'),('manual','Manual')],description=radio_prompt,value=currentsmoke.radio),
+		form.Textbox(webmanual_prompt, 
+			form.notnull, 
+			form.regexp('\d+', 'Angle must be a digit!'),
+			form.Validator('Must be a number', lambda x: not x or int(x) > 0),
+			id="txtWebManualAngle",
+			value=str(currentsmoke.getDoorAngle())),	
+		form.Button('btn', id="btnNewSettings", value="newsettings", html="Enter Settings")
 	)
 	return mainform()
 
@@ -177,7 +226,10 @@ class index:
 			if (currentsmoke.manual == True):
 				self.manmodestr = "Manual mode engaged."
 			else:
-				self.manmodestr = "Automatic mode engaged."
+				if (currentsmoke.radio == 'manual'):
+					self.manmodestr = "Web manual mode engaged."
+				else:	
+					self.manmodestr = "Automatic mode engaged."
 			self.servoangle = currentsmoke.servo
 			sprocketmult = 0;
 			if (currentsmoke.sprocket == "A"):
@@ -213,7 +265,10 @@ class index:
 					currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
 					currentsmoke.setFilename(str(form[filename_prompt].value))
 					currentsmoke.setRecording(True)
-					print "setting true"
+					print "start"
+				elif form.btn.value == "newsettings":
+					currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
+					currentsmoke.setWebManual(form['radio'].value, int(form[webmanual_prompt].value))
 				else:
 					print "What button did you even push?!?!"
 				raise web.seeother('/')
