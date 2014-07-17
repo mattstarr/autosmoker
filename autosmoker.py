@@ -204,6 +204,7 @@ class autoSmoker:
 		self.servoAngle = 0 #initial position is closed. 
 		self.manualServoMode = False
 		self.led1on = False #manual mode
+		self.sprocket = "B" #A = 16t, B = 24t
 		
 	#sensor functions
 	##################################
@@ -276,6 +277,33 @@ class autoSmoker:
 			self.setManualMode(True)
 		else:
 			self.setManualMode(False)
+			
+	def setServoFromAutomation(self, position):
+		#use dictionary later...
+		if (position == 1): #smother
+			self.setServoAngle(0)
+		elif (position == 2): #lower temp
+			if (self.sprocket == "A"): #A = 16t, B = 24t
+				self.setServoAngle(48)
+			elif (self.sprocket == "B"): 
+				self.setServoAngle(72)
+		elif (position == 3): #hold temp 
+			if (self.sprocket == "A"): #A = 16t, B = 24t
+				self.setServoAngle(72)
+			elif (self.sprocket == "B"): 
+				self.setServoAngle(108)
+		elif (position == 4): #increase temp
+			if (self.sprocket == "A"): #A = 16t, B = 24t
+				self.setServoAngle(96)
+			elif (self.sprocket == "B"): 
+				self.setServoAngle(144)
+		elif (position == 5): #"revive" fire
+			if (self.sprocket == "A"): #A = 16t, B = 24t
+				self.setServoAngle(144)
+			elif (self.sprocket == "B"): 
+				self.setServoAngle(180)
+		else:
+			writeToLog("Incorrect position!")
 
 mySmoker = autoSmoker()
 mySmoker.setServoAngle(0) #make sure it is set closed
@@ -291,10 +319,10 @@ mySmoker.setServoAngle(0) #make sure it is set closed
 """##############################################
 #Email settings (outgoing) - put your settings here
 ##############################################"""
-email_smtp_address = 
+email_smtp_address = 'smtp.ipage.com'
 email_smtp_port = 587
-email_login_name = 
-email_password = 
+email_login_name = 'autosmoker@mattstarr.net'
+email_password = 'SmokeMeat321' 
 emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
 
 class SmokeData:
@@ -304,12 +332,13 @@ class SmokeData:
 	mailserverquit = False
 	recording = False
 	filename = "smokelog" + startdts + ".csv"
-	targetMeatTemp = 145
-	targetSmokerTemp = 225
+	targetMeatTemp = 160
+	targetSmokerTemp = 300
 	alertThresholdMinutes = 2	
 	email_list = []
 	startCookTime = 0
 	elapsedTime = 0
+	tsThresh = 12.5 #target smoker temp threshold -- window for each position will be 2* this number
 		
 	def setTargets(self, newMeatTemp, newSmokerTemp, newThresh):
 		self.targetMeatTemp = newMeatTemp
@@ -344,9 +373,9 @@ class SmokeData:
 				writeToLog("Attempting to send email...")
 				if (self.mailserverquit): #reconnect if we are sending an email after the first
 					emailserver.connect(email_smtp_address, email_smtp_port)
-				#emailserver.starttls()
-				emailserver.ehlo()
-				emailserver.set_debuglevel(True)
+				emailserver.starttls()
+				#emailserver.ehlo()
+				#emailserver.set_debuglevel(True)
 				emailserver.login(email_login_name, email_password)
 				emailserver.sendmail(fromaddr, self.email_list, msg.as_string())
 				emailserver.quit()
@@ -374,8 +403,15 @@ class SmokeData:
 		self.sendEmail(subject, body)
 	
 	def getNewTemps(self):
-		self.meatTemp = mySmoker.meatTempF()
-		self.smokerTemp = mySmoker.smokerTempF()
+		curMeat = mySmoker.meatTempF()
+		curSmoke = mySmoker.smokerTempF()
+		#Yes - the following MAY rule out legitimate readings of 0 degrees F. However,
+		#if read fails, we want to use old values until we can get our next reading, rather than 
+		#placing an incorrect 0 in our dataset.
+		if curMeat != 0:
+			self.meatTemp = curMeat
+		if curSmoke != 0:
+			self.smokerTemp = curSmoke 
 		
 smokeinfo = SmokeData()
 			
@@ -396,6 +432,8 @@ class startIO(threading.Thread):
 		threading.Thread.__init__(self)	
 	
 	def run(self):
+		position = 1
+		newPosition = 3
 		while (True):
 			global errmsg
 			errmsg = YRefParam()
@@ -434,8 +472,36 @@ class startIO(threading.Thread):
 						self.startNewCSV = False # append for rest of run 
 					else:
 						mode = 'ab' # append (binary)
-					currentLine = [self.n, str(datetime.now()), round(smokeinfo.elapsedTime, 2), smokeinfo.smokerTemp, smokeinfo.meatTemp, mySmoker.servoAngle]
+					currentLine = [self.n, str(datetime.now()), round(smokeinfo.elapsedTime, 2), smokeinfo.smokerTemp, smokeinfo.meatTemp, mySmoker.servoAngle, mySmoker.manualServoMode, smokeinfo.targetSmokerTemp, smokeinfo.targetMeatTemp]
 					outputCSV(smokeinfo.filename, currentLine, mode)
+					
+				#automation time!
+				if (mySmoker.manualServoMode == False):
+					#quench
+					if (smokeinfo.smokerTemp > (smokeinfo.targetSmokerTemp + (3.0 * smokeinfo.tsThresh))):
+						newPosition = 1
+					#lower temp
+					elif (smokeinfo.smokerTemp > (smokeinfo.targetSmokerTemp + smokeinfo.tsThresh)) and (smokeinfo.smokerTemp <= (smokeinfo.targetSmokerTemp + (3.0 * smokeinfo.tsThresh))):
+						newPosition = 2
+					#hold
+					elif (smokeinfo.smokerTemp >= (smokeinfo.targetSmokerTemp - smokeinfo.tsThresh)) and (smokeinfo.smokerTemp <= (smokeinfo.targetSmokerTemp + smokeinfo.tsThresh)):
+						newPosition = 3
+					#raise
+					elif (smokeinfo.smokerTemp >= (smokeinfo.targetSmokerTemp - (3.0 * smokeinfo.tsThresh))) and (smokeinfo.smokerTemp < (smokeinfo.targetSmokerTemp - smokeinfo.tsThresh)):
+						newPosition = 4
+					#"revive" fire
+					elif (smokeinfo.smokerTemp < (smokeinfo.targetSmokerTemp - (3.0 * smokeinfo.tsThresh))):
+						newPosition = 5
+					#???
+					else:
+						writeToLog("Logic error in automation...")
+												
+					if (newPosition != position):
+						position = newPosition
+						writeToLog("Target temp: " + str(smokeinfo.targetSmokerTemp))
+						writeToLog("Actual temp: " + str(smokeinfo.smokerTemp))
+						writeToLog("Setting position auto to: " + str(position))
+						mySmoker.setServoFromAutomation(position)
 			else:
 				smokeinfo.setStartCookTimeNow()	#keep moving timer forward until we start
 				GPIO.output(M_LED_PIN, True)
@@ -450,11 +516,11 @@ class startIO(threading.Thread):
 						self.meatAtTemp = True
 						self.meatAtTempTime = time.time()	
 						writeToLog("Starting timer, meat at: " + str(smokeinfo.meatTemp) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
-						b3thread = blinkRLED(3, longBlink)
-						b3thread.start()
+						b10thread = blinkRLED(10, shortBlink)
+						b10thread.start()
 					if self.meatAtTemp and ((time.time() - self.meatAtTempTime) >= (smokeinfo.alertThresholdMinutes * 60.0)): #meat has been at temp longer than threshhold time
 						writeToLog("meat at temp for required time.")
-						b30thread = blinkRLED(30, shortBlink)
+						b30thread = blinkRLED(30, longBlink)
 						b30thread.start()
 						smokeinfo.sendMeatAtTempEmail(smokeinfo.elapsedTime) 
 						self.meatTempEmailSent = True	

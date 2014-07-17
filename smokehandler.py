@@ -22,6 +22,7 @@ class datahandler(threading.Thread):
 			webui.currentsmoke.setCurrentTemps(autosmoker.smokeinfo.meatTemp, autosmoker.smokeinfo.smokerTemp)
 			webui.currentsmoke.setServo(autosmoker.mySmoker.servoAngle)
 			webui.currentsmoke.setManual(autosmoker.mySmoker.manualServoMode)
+			webui.currentsmoke.setSprocket(autosmoker.mySmoker.sprocket) #really only need this once...
 			if (autosmoker.smokeinfo.recording == False) and (webui.currentsmoke.recording == True):
 				if (len(webui.currentsmoke.smokefile) > 0):
 					autosmoker.smokeinfo.setFilename(webui.currentsmoke.smokefile)

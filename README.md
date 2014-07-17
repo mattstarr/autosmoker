@@ -14,10 +14,12 @@ from 0 to 180
 usec = 600 + (10 * deg)
 
 The following was added to /etc/init/autosmoker.conf: (after installing upstart)
-description "startup smoker and web UI on start"
+```description "startup smoker and web UI on start"
 author "Matt Starr - matt@mattstarr.net"
 start on runlevel [2345]
 stop on runlevel [016]
 chdir /home/pi/scripts/
-exec python /home/pi/scripts/webui.py
-respawn
+exec python /home/pi/scripts/smokehandler.py
+exec python /home/pi/scripts/servoreader.py
+respawn```
+

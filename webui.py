@@ -35,6 +35,10 @@ class infoHandler:
 	recording = False
 	changeTargets = True
 	changeEmails = False
+	sprocket = "A"
+	
+	def setSprocket(self, newSprocket):
+		self.sprocket = newSprocket
 	
 	def setCurrentTemps(self, newMeatT, newSmokerT):
 		self.meat_temp = newMeatT
@@ -175,8 +179,14 @@ class index:
 			else:
 				self.manmodestr = "Automatic mode engaged."
 			self.servoangle = currentsmoke.servo
-			self.doorangle = "{:.2f}".format(float(self.servoangle) * 0.625) #.625 is ratio of sprockets (10:16)
-			
+			sprocketmult = 0;
+			if (currentsmoke.sprocket == "A"):
+				sprocketmult = 0.625 #.625 is ratio of sprockets (10:16)
+			elif (currentsmoke.sprocket == "B"):
+				sprocketmult = 0.4166666666666667 #.416666667 is ratio of sprockets (10:24)
+			else:
+				print "wrong sprocket size!"
+			self.doorangle = "{:.2f}".format(float(self.servoangle) * sprocketmult) 
 			#except:
 			#	e = sys.exc_info()
 			#	autosmoker.writeToLog("Error during index.GET(): " + str(e))
@@ -195,7 +205,7 @@ class index:
 					#parse comma separated email/text addresses:
 					emails = str(form['Send to:'].value).split(",")
 					currentsmoke.setEmailList(emails)
-				elif form.btn.value == 'test':
+				elif form.btn.value == 'test': #currently defunct
 					pass
 					#autosmoker.smokeinfo.sendTestEmail()
 				elif form.btn.value == 'start':
