@@ -23,6 +23,9 @@ class datahandler(threading.Thread):
 			webui.currentsmoke.setSprocket(autosmoker.mySmoker.sprocket) #really only need this once...
 			webui.currentsmoke.setManual(autosmoker.mySmoker.manualServoMode)
 			
+			#update this in case we want to turn it off at any point
+			autosmoker.smokeinfo.setStartWithTimer(webui.currentsmoke.startWithTimer)
+			
 			if (autosmoker.mySmoker.manualServoMode == True) or (webui.currentsmoke.radio == 'auto'):
 				autosmoker.smokeinfo.setWebManual(False)
 				webui.currentsmoke.setServo(autosmoker.mySmoker.servoAngle)

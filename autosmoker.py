@@ -32,6 +32,7 @@ import threading
 import smtplib
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEText import MIMEText
+import random
 
 """##############################################
 #Email settings (outgoing) - put your settings here
@@ -40,15 +41,16 @@ email_smtp_address =
 email_smtp_port = 587
 email_login_name = 
 email_password = 
-emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
-
-
+# emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
 
 def getDTS():
 	return time.strftime("%d/%m/%y %H:%M:%S")
 	
 startdts = time.strftime("%d%m%y%H%M") #date/time string (minus second)
 logfilename = "debuglog" + startdts + ".log"
+#redirect sdout to file, since we are not running in a terminal -- fix?
+#stdoutlog = "stdoutlog" + startdts + ".log"
+#sys.stdout = open(stdoutlog, 'w')
 
 servofilename = "servo.txt"
 
@@ -215,7 +217,7 @@ class autoSmoker:
 		self.servoAngle = 0 #initial position is closed. 
 		self.manualServoMode = False
 		self.led1on = False #manual mode
-		self.sprocket = "B" #A = 16t, B = 24t
+		self.sprocket = "A" #A = 16t, B = 24t
 		
 	#sensor functions
 	##################################
@@ -341,6 +343,10 @@ class SmokeData:
 	elapsedTime = 0
 	tsThresh = 12.5 #target smoker temp threshold -- window for each position will be 2* this number
 	webManual = False
+	startWithTimer = True
+	
+	def setStartWithTimer(self, newValue):
+		self.startWithTimer = newValue
 	
 	def setWebManual(self, newMan):
 		self.webManual = newMan
@@ -367,6 +373,7 @@ class SmokeData:
 			
 	def sendEmail(self, msgSubject, msgBody):
 		if len(self.email_list) > 0: 
+			emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
 			fromaddr = email_login_name
 			msg = MIMEMultipart()
 			msg['Subject'] = msgSubject
@@ -375,16 +382,18 @@ class SmokeData:
 			msg['To'] = COMMASPACE.join(self.email_list)
 			msg.attach(MIMEText(msgBody, 'plain'))
 			try:
+				emailserver.set_debuglevel(True)
 				writeToLog("Attempting to send email...")
 				if (self.mailserverquit): #reconnect if we are sending an email after the first
 					emailserver.connect(email_smtp_address, email_smtp_port)
+				emailserver.ehlo()
 				emailserver.starttls()
-				#emailserver.ehlo()
-				emailserver.set_debuglevel(True)
+				emailserver.ehlo()
 				emailserver.login(email_login_name, email_password)
 				emailserver.sendmail(fromaddr, self.email_list, msg.as_string())
 				emailserver.quit()
 				self.mailserverquit = True #need to reconnect later if we want to send more mail
+				writeToLog("Email sent successfully (I think...)")
 			except:
 				e = sys.exc_info()
 				writeToLog("Error sending email: " + str(e))
@@ -395,18 +404,55 @@ class SmokeData:
 		body = "If you can read this, that's pretty sweet."
 		self.sendEmail(subject, body)
 	def sendMeatAtTempEmail(self, cookTime):
-		subject = "Meat is done!"
 		#from http://stackoverflow.com/questions/775049/python-time-seconds-to-hms
 		m, s = divmod(cookTime, 60)
 		h, m = divmod(m, 60)
 		timestr = "%d:%02d:%02d" % (h, m, s)
-		str1 = "The meat is done!\nThe meat has reached %1.2f degrees (F) after smoking for " % (self.meatTemp) 
+		#randomly decide to add cook time to subject
+		showtimechoice = random.randint(1,2)
+		if showtimechoice == 1:
+			subject = self.getRandSubjectStr() + " - cook time is " + timestr
+		else:
+			subject = self.getRandSubjectStr()
+		str0 = self.getRandSubjectStr()
+		str1 = "\nThe meat has reached %1.2f degrees (F) after smoking for " % (self.meatTemp) 
 		str2 = ". The smoker temperature is %1.2f degrees (F)." % (self.smokerTemp)
 		str3 = "\nThe target meat temperature was %1.2f degrees (F), and the target smoker temperature was %1.2f degrees (F)." % (self.targetMeatTemp, self.targetSmokerTemp)
 		str4 = "\n\tlogfile: " + self.filename
-		body = str1 + timestr + str2 + str3 + str4
+		body = str0 + str1 + timestr + str2 + str3 + str4
 		self.sendEmail(subject, body)
-	
+		
+	def getRandSubjectStr(self): #keep it random-ish to avoid being marked as spam or UCE
+		subj = ""
+		choice = random.randint(1,12)
+		if (choice == 1):
+			subj = "Meat is done!"
+		elif (choice == 2):
+			subj = "Come grab your food!"
+		elif (choice == 3):
+			subj = "Time for eats!"
+		elif (choice == 4):
+			subj = "Rush to the smoker!"
+		elif (choice == 5):
+			subj = "Dude, food!"
+		elif (choice == 6):
+			subj = "It's just how you like it!"
+		elif (choice == 7):
+			subj = "Hurry, before it dries out!"
+		elif (choice == 8):
+			subj = "Time to rest your meat!"
+		elif (choice == 9):
+			subj = "nomnomnomnomnom alert!"
+		elif (choice == 10):
+			subj = "I hope you're hungry!"
+		elif (choice == 11):
+			subj = "Time to put something yummy in your tummy!"
+		elif (choice == 12):
+			subj = "RE: heads up on the chow."
+		else:
+			subj = "Here's a random subject title! Fix your code, jerk!"
+		return subj
+		
 	def getNewTemps(self):
 		curMeat = mySmoker.meatTempF()
 		curSmoke = mySmoker.smokerTempF()
@@ -482,9 +528,9 @@ class startIO(threading.Thread):
 					
 				#automation time!
 				if (mySmoker.manualServoMode == False) and (smokeinfo.webManual == False):
-					#hold at 45 degrees for first 5 minutes.
-					if (smokeinfo.elapsedTime < 300):
-						newPosition = 3
+					#hold at 45 degrees for first 5 minutes.					
+					if (smokeinfo.startWithTimer == True) and (smokeinfo.elapsedTime < 300):
+						newPosition = 2
 					else:
 						#set position based on temp
 						if (smokeinfo.smokerTemp > (smokeinfo.targetSmokerTemp + (3.0 * smokeinfo.tsThresh))):
@@ -551,7 +597,6 @@ try:
 	#thread.daemon = True
 	#thread.setDaemon(True)
 	thread.start()
-	#trythis()
 except:
 	print "DANGER, WILL ROBINSON!!!"
 	e = sys.exc_info()[0]

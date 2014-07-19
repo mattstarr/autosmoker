@@ -19,6 +19,7 @@ smoker_prompt = 'Target Smoker Temp (F):'
 filename_prompt = 'Output Filename:' 
 webmanual_prompt = 'Manual Door Angle:'
 radio_prompt='Mode:'
+timer_prompt='5 min. Hold on:'
 
 startdts = time.strftime("%d%m%y%H%M") #date/time string (minus second)
 
@@ -40,7 +41,18 @@ class infoHandler:
 	changeTargets = True
 	changeEmails = False
 	sprocket = "A"
+	startWithTimer=True #switch to checkbox later
+	startWithTimerRadio='on'
 	
+	def setStartWithTimerRadio(self, newRadio): #cause checkboxes are not working for me
+		self.startWithTimerRadio = newRadio
+		if (self.startWithTimerRadio == 'on'):
+			self.setStartWithTimer(True)
+		else:
+			self.setStartWithTimer(False)
+	
+	def setStartWithTimer(self, newChecked):
+		self.startWithTimer = newChecked
 	def getDoorAngle(self):
 		sprmult = 0
 		if (self.sprocket == 'A'):
@@ -50,7 +62,7 @@ class infoHandler:
 		if (self.manual == False) and (self.radio == 'manual'):
 			return int(self.web_manual_angle)
 		else:
-			return (sprmult * self.servo)
+			return int(sprmult * self.servo)
 	
 	def setWebManual(self, newMan, newWebManualAngle):
 		self.web_manual_angle = newWebManualAngle
@@ -60,12 +72,12 @@ class infoHandler:
 				self.web_manual_angle = 0
 				self.servo = 0
 			elif self.sprocket == 'A': #16 toother
-				self.servo = int(1.6 * self.web_manual_angle)
+				self.servo = round(1.6 * newWebManualAngle)
 				if self.servo > 180:
 					self.web_manual_angle = int(180.0 * 0.625)
 					self.servo = 180
 			else: #24 toother
-				self.servo = int(2.4 * self.web_manual_angle)
+				self.servo = round(2.4 * newWebManualAngle)
 				if self.servo > 180:
 					self.web_manual_angle = 75
 					self.servo = 180
@@ -135,6 +147,7 @@ main_form = form.Form(
 		form.Validator('Must be a number', lambda x: not x or int(x) > 0),
 		id="txtTargetSmokerTemp",
 		value=str(currentsmoke.target_smoker)),	
+	form.Radio('startTimer',[('on','On'),('off','Off')],description=timer_prompt,value=currentsmoke.startWithTimerRadio),
 	form.Button('btn', id="btnStart", value="start", html="Start + Record"),
 	form.Radio('radio',[('auto','Automatic'),('manual','Manual')],description="Mode:",value=currentsmoke.radio),
 		form.Textbox(webmanual_prompt, 
@@ -174,6 +187,7 @@ def getMainForm():
 			form.Validator('Must be a number', lambda x: not x or int(x) > 0),
 			id="txtTargetSmokerTemp",
 			value=str(currentsmoke.target_smoker)),	
+		form.Radio('startTimer',[('on','On'),('off','Off')],description=timer_prompt,value=currentsmoke.startWithTimerRadio),
 		form.Button('btn', id="btnStart", value="start", html="Start + Record"),
 		form.Radio('radio',[('auto','Automatic'),('manual','Manual')],description=radio_prompt,value=currentsmoke.radio),
 		form.Textbox(webmanual_prompt, 
@@ -264,11 +278,13 @@ class index:
 					#get the smoker and file rolling!!!
 					currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
 					currentsmoke.setFilename(str(form[filename_prompt].value))
+					currentsmoke.setStartWithTimerRadio(form['startTimer'].value)
 					currentsmoke.setRecording(True)
 					print "start"
 				elif form.btn.value == "newsettings":
 					currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
-					currentsmoke.setWebManual(form['radio'].value, int(form[webmanual_prompt].value))
+					currentsmoke.setWebManual(form['radio'].value, float(form[webmanual_prompt].value))
+					currentsmoke.setStartWithTimerRadio(form['startTimer'].value)
 				else:
 					print "What button did you even push?!?!"
 				raise web.seeother('/')
