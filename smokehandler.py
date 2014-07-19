@@ -20,8 +20,18 @@ class datahandler(threading.Thread):
 	def run(self):
 		while True:
 			webui.currentsmoke.setCurrentTemps(autosmoker.smokeinfo.meatTemp, autosmoker.smokeinfo.smokerTemp)
-			webui.currentsmoke.setServo(autosmoker.mySmoker.servoAngle)
+			webui.currentsmoke.setSprocket(autosmoker.mySmoker.sprocket) #really only need this once...
 			webui.currentsmoke.setManual(autosmoker.mySmoker.manualServoMode)
+			
+			#update this in case we want to turn it off at any point
+			autosmoker.smokeinfo.setStartWithTimer(webui.currentsmoke.startWithTimer)
+			
+			if (autosmoker.mySmoker.manualServoMode == True) or (webui.currentsmoke.radio == 'auto'):
+				autosmoker.smokeinfo.setWebManual(False)
+				webui.currentsmoke.setServo(autosmoker.mySmoker.servoAngle)
+			else: #set from web manual!
+				autosmoker.smokeinfo.setWebManual(True)
+				autosmoker.mySmoker.setServoAngle(webui.currentsmoke.servo)
 			if (autosmoker.smokeinfo.recording == False) and (webui.currentsmoke.recording == True):
 				if (len(webui.currentsmoke.smokefile) > 0):
 					autosmoker.smokeinfo.setFilename(webui.currentsmoke.smokefile)

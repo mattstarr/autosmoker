@@ -17,7 +17,7 @@ def readToServo():
 	with open(servofilename, 'r') as servofile:
 		linein = servofile.read()
 		if len(linein) > 0:
-			newPosition = int(linein)
+			newPosition = round(float(linein))
 			return newPosition
 		else:
 			print "error, using old value!"

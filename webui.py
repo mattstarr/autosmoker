@@ -17,6 +17,9 @@ app = web.application(urls, globals())
 meat_prompt = 'Target Meat Temp (F):'
 smoker_prompt = 'Target Smoker Temp (F):'
 filename_prompt = 'Output Filename:' 
+webmanual_prompt = 'Manual Door Angle:'
+radio_prompt='Mode:'
+timer_prompt='5 min. Hold on:'
 
 startdts = time.strftime("%d%m%y%H%M") #date/time string (minus second)
 
@@ -24,8 +27,10 @@ class infoHandler:
 	#from autosmoker to webui (mostly)
 	meat_temp = 0
 	smoker_temp = 0
+	web_manual_angle = 0
 	servo = 0
 	manual = False
+	radio = 'auto' #manual entry on webpage. cannot override manual switch
 	startCookTime = 0
 	#from webui to smoker (mostly)
 	target_meat = 160
@@ -35,6 +40,50 @@ class infoHandler:
 	recording = False
 	changeTargets = True
 	changeEmails = False
+	sprocket = "A"
+	startWithTimer=True #switch to checkbox later
+	startWithTimerRadio='on'
+	
+	def setStartWithTimerRadio(self, newRadio): #cause checkboxes are not working for me
+		self.startWithTimerRadio = newRadio
+		if (self.startWithTimerRadio == 'on'):
+			self.setStartWithTimer(True)
+		else:
+			self.setStartWithTimer(False)
+	
+	def setStartWithTimer(self, newChecked):
+		self.startWithTimer = newChecked
+	def getDoorAngle(self):
+		sprmult = 0
+		if (self.sprocket == 'A'):
+			sprmult = 0.625
+		else:
+			sprmult = 10/24
+		if (self.manual == False) and (self.radio == 'manual'):
+			return int(self.web_manual_angle)
+		else:
+			return int(sprmult * self.servo)
+	
+	def setWebManual(self, newMan, newWebManualAngle):
+		self.web_manual_angle = newWebManualAngle
+		self.radio = newMan
+		if (self.manual == False) and (self.radio == 'manual'):
+			if (self.web_manual_angle <= 0):
+				self.web_manual_angle = 0
+				self.servo = 0
+			elif self.sprocket == 'A': #16 toother
+				self.servo = round(1.6 * newWebManualAngle)
+				if self.servo > 180:
+					self.web_manual_angle = int(180.0 * 0.625)
+					self.servo = 180
+			else: #24 toother
+				self.servo = round(2.4 * newWebManualAngle)
+				if self.servo > 180:
+					self.web_manual_angle = 75
+					self.servo = 180
+	
+	def setSprocket(self, newSprocket):
+		self.sprocket = newSprocket
 	
 	def setCurrentTemps(self, newMeatT, newSmokerT):
 		self.meat_temp = newMeatT
@@ -98,7 +147,16 @@ main_form = form.Form(
 		form.Validator('Must be a number', lambda x: not x or int(x) > 0),
 		id="txtTargetSmokerTemp",
 		value=str(currentsmoke.target_smoker)),	
-	form.Button('btn', id="btnStart", value="start", html="Start + Record")
+	form.Radio('startTimer',[('on','On'),('off','Off')],description=timer_prompt,value=currentsmoke.startWithTimerRadio),
+	form.Button('btn', id="btnStart", value="start", html="Start + Record"),
+	form.Radio('radio',[('auto','Automatic'),('manual','Manual')],description="Mode:",value=currentsmoke.radio),
+		form.Textbox(webmanual_prompt, 
+			form.notnull, 
+			form.regexp('\d+', 'Angle must be a digit!'),
+			form.Validator('Must be a number', lambda x: not x or int(x) >= 0),
+			id="txtWebManualAngle",
+			value=str(currentsmoke.getDoorAngle())),	
+		form.Button('btn', id="btnNewSettings", value="newsettings", html="Enter Settings")
 )
 
 
@@ -129,7 +187,16 @@ def getMainForm():
 			form.Validator('Must be a number', lambda x: not x or int(x) > 0),
 			id="txtTargetSmokerTemp",
 			value=str(currentsmoke.target_smoker)),	
-		form.Button('btn', id="btnStart", value="start", html="Start + Record")
+		form.Radio('startTimer',[('on','On'),('off','Off')],description=timer_prompt,value=currentsmoke.startWithTimerRadio),
+		form.Button('btn', id="btnStart", value="start", html="Start + Record"),
+		form.Radio('radio',[('auto','Automatic'),('manual','Manual')],description=radio_prompt,value=currentsmoke.radio),
+		form.Textbox(webmanual_prompt, 
+			form.notnull, 
+			form.regexp('\d+', 'Angle must be a digit!'),
+			form.Validator('Must be a number', lambda x: not x or int(x) > 0),
+			id="txtWebManualAngle",
+			value=str(currentsmoke.getDoorAngle())),	
+		form.Button('btn', id="btnNewSettings", value="newsettings", html="Enter Settings")
 	)
 	return mainform()
 
@@ -173,10 +240,19 @@ class index:
 			if (currentsmoke.manual == True):
 				self.manmodestr = "Manual mode engaged."
 			else:
-				self.manmodestr = "Automatic mode engaged."
+				if (currentsmoke.radio == 'manual'):
+					self.manmodestr = "Web manual mode engaged."
+				else:	
+					self.manmodestr = "Automatic mode engaged."
 			self.servoangle = currentsmoke.servo
-			self.doorangle = "{:.2f}".format(float(self.servoangle) * 0.625) #.625 is ratio of sprockets (10:16)
-			
+			sprocketmult = 0;
+			if (currentsmoke.sprocket == "A"):
+				sprocketmult = 0.625 #.625 is ratio of sprockets (10:16)
+			elif (currentsmoke.sprocket == "B"):
+				sprocketmult = 0.4166666666666667 #.416666667 is ratio of sprockets (10:24)
+			else:
+				print "wrong sprocket size!"
+			self.doorangle = "{:.2f}".format(float(self.servoangle) * sprocketmult) 
 			#except:
 			#	e = sys.exc_info()
 			#	autosmoker.writeToLog("Error during index.GET(): " + str(e))
@@ -195,15 +271,20 @@ class index:
 					#parse comma separated email/text addresses:
 					emails = str(form['Send to:'].value).split(",")
 					currentsmoke.setEmailList(emails)
-				elif form.btn.value == 'test':
+				elif form.btn.value == 'test': #currently defunct
 					pass
 					#autosmoker.smokeinfo.sendTestEmail()
 				elif form.btn.value == 'start':
 					#get the smoker and file rolling!!!
 					currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
 					currentsmoke.setFilename(str(form[filename_prompt].value))
+					currentsmoke.setStartWithTimerRadio(form['startTimer'].value)
 					currentsmoke.setRecording(True)
-					print "setting true"
+					print "start"
+				elif form.btn.value == "newsettings":
+					currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
+					currentsmoke.setWebManual(form['radio'].value, float(form[webmanual_prompt].value))
+					currentsmoke.setStartWithTimerRadio(form['startTimer'].value)
 				else:
 					print "What button did you even push?!?!"
 				raise web.seeother('/')
