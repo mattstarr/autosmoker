@@ -528,7 +528,7 @@ class startIO(threading.Thread):
 					
 				#automation time!
 				if (mySmoker.manualServoMode == False) and (smokeinfo.webManual == False):
-					#hold at 45 degrees for first 5 minutes.					
+					#hold at chosen position				
 					if (smokeinfo.startWithTimer == True) and (smokeinfo.elapsedTime < 300):
 						newPosition = 2
 					else:
@@ -583,7 +583,7 @@ class startIO(threading.Thread):
 						smokeinfo.sendMeatAtTempEmail(smokeinfo.elapsedTime) 
 						self.meatTempEmailSent = True	
 				else: #likely false alarm (or something else happened)
-					if self.meatAtTemp:
+					if (self.meatAtTemp and (smokeinfo.meatTemp < (smokeinfo.targetMeatTemp - 5.5))): #change 5.5 to thresh, later
 						writeToLog("Resetting timer (meat below required temp). Meat at: " + str(smokeinfo.meatTemp) + "F. -- target is: " + str(smokeinfo.targetMeatTemp) + "F.") 
 						self.meatAtTemp = False
 			#except:

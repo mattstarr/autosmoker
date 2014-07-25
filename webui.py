@@ -9,7 +9,8 @@ import web
 from web import form
 import threading
 	
-urls = ('/', 'index')
+urls = ('/', 'index', 
+		'/infopage.html', 'infopage')
 render = web.template.render('templates/')
 
 app = web.application(urls, globals())
@@ -203,61 +204,13 @@ def getMainForm():
 
 
 class index:
-	rendertime = str(datetime.now())
-	smoketimestr = ""
-	targetmeat = ""
-	targetsmoker = ""	
-	meattempstr = ""
-	smokertempstr = "" 
-	manmodestr = ""
-	servoangle = 0 
-	doorangle = 0
-	targetmeat = ""
-	targetsmoker = ""
 	form = getMainForm()
 	
 	def GET(self):
 		#try:
 			self.form = getMainForm()
 			self.rendertime = str(datetime.now())
-			self.smoketimestr = ""
-			self.targetmeat = ""
-			self.targetsmoker = ""
-			if (currentsmoke.getElapsedTime() == 0):
-				self.smoketimestr = "Smoke has not been started."
-				self.targetmeat = "Target meat temperature not yet set."
-				self.targetsmoker = "Target smoker temperature not yet set."
-			else:
-				#from http://stackoverflow.com/questions/775049/python-time-seconds-to-hms
-				m, s = divmod(currentsmoke.getElapsedTime(), 60)
-				h, m = divmod(m, 60)
-				timestr = "%d:%02d:%02d" % (h, m, s)
-				self.smoketimestr = "Elapsed smoke time: " + timestr
-				self.targetmeat = "Target meat temperature: %1.2f degrees (F)." % currentsmoke.target_meat
-				self.targetsmoker = "Target smoker temperature: %1.2f degrees (F)." % currentsmoke.target_smoker
-			self.meattempstr = "{:.2f}".format(currentsmoke.meat_temp)
-			self.smokertempstr = "{:.2f}".format(currentsmoke.smoker_temp)
-			if (currentsmoke.manual == True):
-				self.manmodestr = "Manual mode engaged."
-			else:
-				if (currentsmoke.radio == 'manual'):
-					self.manmodestr = "Web manual mode engaged."
-				else:	
-					self.manmodestr = "Automatic mode engaged."
-			self.servoangle = currentsmoke.servo
-			sprocketmult = 0;
-			if (currentsmoke.sprocket == "A"):
-				sprocketmult = 0.625 #.625 is ratio of sprockets (10:16)
-			elif (currentsmoke.sprocket == "B"):
-				sprocketmult = 0.4166666666666667 #.416666667 is ratio of sprockets (10:24)
-			else:
-				print "wrong sprocket size!"
-			self.doorangle = "{:.2f}".format(float(self.servoangle) * sprocketmult) 
-			#except:
-			#	e = sys.exc_info()
-			#	autosmoker.writeToLog("Error during index.GET(): " + str(e))
-			#	raise	
-			return render.index(self.form, "Autosmoker Web UI", self.rendertime, self.smoketimestr, self.meattempstr, self.smokertempstr, self.manmodestr, self.servoangle, self.doorangle, self.targetmeat, self.targetsmoker)
+			return render.index(self.form, "Autosmoker Web UI")
 	
     # POST is called when a web form is submitted
 	def POST(self):
@@ -298,7 +251,65 @@ class index:
 # run
 
 #class display:
+class infopage:
+	rendertime = str(datetime.now())
+	smoketimestr = ""
+	targetmeat = ""
+	targetsmoker = ""	
+	meattempstr = ""
+	smokertempstr = "" 
+	manmodestr = ""
+	servoangle = 0 
+	doorangle = 0
+	targetmeat = ""
+	targetsmoker = ""
 	
+	def GET(self):
+		#try:
+			self.rendertime = str(datetime.now())
+			self.smoketimestr = ""
+			self.targetmeat = ""
+			self.targetsmoker = ""
+			if (currentsmoke.getElapsedTime() == 0):
+				self.smoketimestr = "Smoke has not been started."
+				self.targetmeat = "Target meat temperature not yet set."
+				self.targetsmoker = "Target smoker temperature not yet set."
+			else:
+				#from http://stackoverflow.com/questions/775049/python-time-seconds-to-hms
+				m, s = divmod(currentsmoke.getElapsedTime(), 60)
+				h, m = divmod(m, 60)
+				timestr = "%d:%02d:%02d" % (h, m, s)
+				self.smoketimestr = "Elapsed smoke time: " + timestr
+				self.targetmeat = "Target meat temperature: %1.2f degrees (F)." % currentsmoke.target_meat
+				self.targetsmoker = "Target smoker temperature: %1.2f degrees (F)." % currentsmoke.target_smoker
+			self.meattempstr = "{:.2f}".format(currentsmoke.meat_temp)
+			self.smokertempstr = "{:.2f}".format(currentsmoke.smoker_temp)
+			if (currentsmoke.manual == True):
+				self.manmodestr = "Manual mode engaged."
+			else:
+				if (currentsmoke.radio == 'manual'):
+					self.manmodestr = "Web manual mode engaged."
+				else:	
+					self.manmodestr = "Automatic mode engaged."
+			self.servoangle = currentsmoke.servo
+			sprocketmult = 0;
+			if (currentsmoke.sprocket == "A"):
+				sprocketmult = 0.625 #.625 is ratio of sprockets (10:16)
+			elif (currentsmoke.sprocket == "B"):
+				sprocketmult = 0.4166666666666667 #.416666667 is ratio of sprockets (10:24)
+			else:
+				print "wrong sprocket size!"
+			self.doorangle = "{:.2f}".format(float(self.servoangle) * sprocketmult) 
+			#except:
+			#	e = sys.exc_info()
+			#	autosmoker.writeToLog("Error during index.GET(): " + str(e))
+			#	raise	
+			return render.infopage(self.rendertime, self.smoketimestr, self.meattempstr, self.smokertempstr, self.manmodestr, self.servoangle, self.doorangle, self.targetmeat, self.targetsmoker)
+	
+    # POST is called when a web form is submitted
+	def POST(self):
+		raise web.seeother('/')
+		#return render.index(form, "Autosmoker Web UI")	
 
 
 

@@ -1,5 +1,5 @@
-$def with (form, title, rendertime, smoketimestr, meattemp, smokertemp, manmode, servoangle, doorangle, targetmeat, targetsmoker)
-<!doctype html>
+$def with (form, title)
+<!DOCTYPE html>
 <html>
     <head>
         <title>$title</title>
@@ -11,14 +11,7 @@ $def with (form, title, rendertime, smoketimestr, meattemp, smokertemp, manmode,
         $:form.render()
         </form>
 		<br/>
-		<p>As of: $rendertime :</p>
-		<p>$smoketimestr</p>
-		<p>$targetmeat</p>
-		<p>Meat probe temperature:   $meattemp degrees (F).</p>
-		<p>$targetsmoker</p>
-		<p>Smoker probe temperature: $smokertemp degrees (F).</p>  
-		<p>$manmode</p>
-		<p>Servo angle: $servoangle degrees.</p>
-		<p>Door angle: $doorangle degrees open.</p>
+		<iframe src="/infopage.html" name="i" allowTransparency="true" seamless height="350" width="360" scrolling="no">
+    </iframe>
 	</body>  
 </html>
