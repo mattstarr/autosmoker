@@ -265,7 +265,7 @@ class infopage:
 	targetsmoker = ""
 	
 	def GET(self):
-		#try:
+		try:
 			self.rendertime = str(datetime.now())
 			self.smoketimestr = ""
 			self.targetmeat = ""
@@ -280,10 +280,10 @@ class infopage:
 				h, m = divmod(m, 60)
 				timestr = "%d:%02d:%02d" % (h, m, s)
 				self.smoketimestr = "Elapsed smoke time: " + timestr
-				self.targetmeat = "Target meat temperature: %1.2f degrees (F)." % currentsmoke.target_meat
-				self.targetsmoker = "Target smoker temperature: %1.2f degrees (F)." % currentsmoke.target_smoker
-			self.meattempstr = "{:.2f}".format(currentsmoke.meat_temp)
-			self.smokertempstr = "{:.2f}".format(currentsmoke.smoker_temp)
+				self.targetmeat = "Target meat temperature: %1.2f degrees (F)." % float(currentsmoke.target_meat)
+				self.targetsmoker = "Target smoker temperature: %1.2f degrees (F)." % float(currentsmoke.target_smoker)
+			self.meattempstr = "{:.2f}".format(float(currentsmoke.meat_temp))
+			self.smokertempstr = "{:.2f}".format(float(currentsmoke.smoker_temp))
 			if (currentsmoke.manual == True):
 				self.manmodestr = "Manual mode engaged."
 			else:
@@ -300,11 +300,12 @@ class infopage:
 			else:
 				print "wrong sprocket size!"
 			self.doorangle = "{:.2f}".format(float(self.servoangle) * sprocketmult) 
-			#except:
-			#	e = sys.exc_info()
-			#	autosmoker.writeToLog("Error during index.GET(): " + str(e))
+		except:
+			e = sys.exc_info()
+			print "Error during index.GET(): " + str(e)
+			#autosmoker.writeToLog("Error during index.GET(): " + str(e))
 			#	raise	
-			return render.infopage(self.rendertime, self.smoketimestr, self.meattempstr, self.smokertempstr, self.manmodestr, self.servoangle, self.doorangle, self.targetmeat, self.targetsmoker)
+		return render.infopage(self.rendertime, self.smoketimestr, self.meattempstr, self.smokertempstr, self.manmodestr, self.servoangle, self.doorangle, self.targetmeat, self.targetsmoker)
 	
     # POST is called when a web form is submitted
 	def POST(self):

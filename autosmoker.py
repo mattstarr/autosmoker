@@ -341,7 +341,7 @@ class SmokeData:
 	email_list = []
 	startCookTime = 0
 	elapsedTime = 0
-	tsThresh = 12.5 #target smoker temp threshold -- window for each position will be 2* this number
+	tsThresh = 10.0 #target smoker temp threshold -- window for each position will be 2* this number
 	webManual = False
 	startWithTimer = True
 	
@@ -393,7 +393,7 @@ class SmokeData:
 				emailserver.sendmail(fromaddr, self.email_list, msg.as_string())
 				emailserver.quit()
 				self.mailserverquit = True #need to reconnect later if we want to send more mail
-				writeToLog("Email sent successfully (I think...)")
+				writeToLog("Email sent successfully!")
 			except:
 				e = sys.exc_info()
 				writeToLog("Error sending email: " + str(e))
@@ -456,16 +456,33 @@ class SmokeData:
 	def getNewTemps(self):
 		curMeat = mySmoker.meatTempF()
 		curSmoke = mySmoker.smokerTempF()
-		#Yes - the following MAY rule out legitimate readings of 0 degrees F. However,
-		#if read fails, we want to use old values until we can get our next reading, rather than 
-		#placing an incorrect 0 in our dataset.
-		if curMeat != 0:
+		#make sure we have a valid number...
+		if (curMeat is not 0) and (isinstance(curMeat, int) or isinstance(curMeat, float)):
 			self.meatTemp = curMeat
-		if curSmoke != 0:
+		else:
+			writeToLog("error - no meat temp value")
+		if (curSmoke is not 0) and (isinstance(curSmoke, int) or isinstance(curSmoke, float)):
 			self.smokerTemp = curSmoke 
+		else:
+			writeToLog("error - no smoker temp value")
 		
 smokeinfo = SmokeData()
 			
+
+class autoPing(threading.Thread):
+	#from: http://stackoverflow.com/questions/7678456/local-network-pinging-in-python	
+	hostname = "192.168.1.1" 
+	def __init__ (self):
+		threading.Thread.__init__(self)	
+	def run(self):
+		time.sleep(300)
+		response = os.system("ping -c 1 " + hostname)
+		if response == 0:
+			pass
+			#print(hostname, 'is up!')
+		else:
+			writeToLog("no connection to " +hostname)
+
 #while (elapsedTime < desiredCookTime ): #use later for a cook? 
 class startIO(threading.Thread):
 	meatAtTempTime = time.time() #use over time to verify we haven't got a false positive (i.e. probe set on grill while turning meat)
@@ -483,6 +500,10 @@ class startIO(threading.Thread):
 		threading.Thread.__init__(self)	
 	
 	def run(self):
+		writeToLog("Starting auto ping...")
+		autoPingThread = autoPing()
+		autoPingThread.start()
+		
 		position = 1
 		newPosition = 3
 		while (True):
