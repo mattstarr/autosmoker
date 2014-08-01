@@ -72,15 +72,10 @@ class infoHandler:
 			if (self.web_manual_angle <= 0):
 				self.web_manual_angle = 0
 				self.servo = 0
-			elif self.sprocket == 'A': #16 toother
+			else: 
 				self.servo = round(1.6 * newWebManualAngle)
 				if self.servo > 180:
 					self.web_manual_angle = int(180.0 * 0.625)
-					self.servo = 180
-			else: #24 toother
-				self.servo = round(2.4 * newWebManualAngle)
-				if self.servo > 180:
-					self.web_manual_angle = 75
 					self.servo = 180
 	
 	def setSprocket(self, newSprocket):
@@ -120,46 +115,6 @@ class infoHandler:
 			return (time.time() - self.startCookTime)
 	
 currentsmoke = infoHandler()	
-
-
-main_form = form.Form(
-	form.Button('btn', id="btnRefresh", value="refresh", html="REFRESH"),
-	form.Textbox('Send to:', #parse to accept addresses separated by commas!
-		id="destEmail",
-		#value=""),
-		value=', '.join(currentsmoke.email_list)),
-	#allow custom mx form items later - for now, use account at mattstarr.net!
-	form.Button('btn', id="btnSetEmail", value="set", html="Set Email Info"),
-	form.Button('btn', id="btnTestEmail", value="test", html="Send Test Email"),
-	#previously in separate form
-	form.Textbox(filename_prompt, 
-		form.notnull, 
-		id="txtFileOut", 
-		value=currentsmoke.smokefile),
-	form.Textbox(meat_prompt, 
-		form.notnull, 
-		form.regexp('\d+', 'Temperature must be a digit!'),
-		form.Validator('Must be a number', lambda x: not x or int(x) > 0),
-		id="txtTargetMeatTemp",
-		value=str(currentsmoke.target_meat)),		
-	form.Textbox(smoker_prompt, 
-		form.notnull, 
-		form.regexp('\d+', 'Temperature must be a digit!'),
-		form.Validator('Must be a number', lambda x: not x or int(x) > 0),
-		id="txtTargetSmokerTemp",
-		value=str(currentsmoke.target_smoker)),	
-	form.Radio('startTimer',[('on','On'),('off','Off')],description=timer_prompt,value=currentsmoke.startWithTimerRadio),
-	form.Button('btn', id="btnStart", value="start", html="Start + Record"),
-	form.Radio('radio',[('auto','Automatic'),('manual','Manual')],description="Mode:",value=currentsmoke.radio),
-		form.Textbox(webmanual_prompt, 
-			form.notnull, 
-			form.regexp('\d+', 'Angle must be a digit!'),
-			form.Validator('Must be a number', lambda x: not x or int(x) >= 0),
-			id="txtWebManualAngle",
-			value=str(currentsmoke.getDoorAngle())),	
-		form.Button('btn', id="btnNewSettings", value="newsettings", html="Enter Settings")
-)
-
 
 def getMainForm():
 	mainform = form.Form(

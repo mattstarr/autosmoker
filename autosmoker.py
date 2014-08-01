@@ -1,21 +1,5 @@
 #!/usr/bin/python
 
-###############################################################################
-#autosmoker.py - drive smoker door with servo based on manual or temperature 
-#				 input, log temps and position to file
-#6/23/14 - MTS - initial script to handle manual button input and LED output
-#6/25/14 - MTS - added MCP3008 / potentiometer functionality
-#6/26/14 - MTS - added .xls file output
-#6/27/14 - MTS - added .csv file output, autoincrementing filenames
-#7/4/14  - MTS - added some web UI interoperability, start thread
-#7/9/14  - MTS - heavy use of try/except to attempt to isolate several bugs that 
-#				 did not present themselves until live test.
-#7/10/14 - MTS - eliminated large bug(s) by isolated motor control in own script 
-#
-# TODO: Currently lots of extra functions. Trim fat when code completed.
-# TODO: Consolidate/rearrange consts, vars, functions
-###############################################################################
-
 #imports
 import spidev #for SPI
 import os, sys, time
@@ -476,12 +460,12 @@ class autoPing(threading.Thread):
 		threading.Thread.__init__(self)	
 	def run(self):
 		time.sleep(300)
-		response = os.system("ping -c 1 " + hostname)
+		response = os.system("ping -c 1 " + self.hostname)
 		if response == 0:
 			pass
-			#print(hostname, 'is up!')
+			#writeToLog(self.hostname + 'is up!')
 		else:
-			writeToLog("no connection to " +hostname)
+			writeToLog("no connection to " + self.hostname)
 
 #while (elapsedTime < desiredCookTime ): #use later for a cook? 
 class startIO(threading.Thread):
