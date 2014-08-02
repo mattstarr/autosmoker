@@ -17,15 +17,7 @@ import smtplib
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEText import MIMEText
 import random
-
-"""##############################################
-#Email settings (outgoing) - put your settings here
-##############################################"""
-email_smtp_address = 
-email_smtp_port = 587
-email_login_name = 
-email_password = 
-# emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
+import smtpInfo
 
 def getDTS():
 	return time.strftime("%d/%m/%y %H:%M:%S")
@@ -201,7 +193,6 @@ class autoSmoker:
 		self.servoAngle = 0 #initial position is closed. 
 		self.manualServoMode = False
 		self.led1on = False #manual mode
-		self.sprocket = "A" #A = 16t, B = 24t
 		
 	#sensor functions
 	##################################
@@ -280,25 +271,13 @@ class autoSmoker:
 		if (position == 1): #smother
 			self.setServoAngle(0)
 		elif (position == 2): #lower temp
-			if (self.sprocket == "A"): #A = 16t, B = 24t
-				self.setServoAngle(48)
-			elif (self.sprocket == "B"): 
-				self.setServoAngle(72)
+			self.setServoAngle(48)
 		elif (position == 3): #hold temp 
-			if (self.sprocket == "A"): #A = 16t, B = 24t
-				self.setServoAngle(72)
-			elif (self.sprocket == "B"): 
-				self.setServoAngle(108)
+			self.setServoAngle(72)
 		elif (position == 4): #increase temp
-			if (self.sprocket == "A"): #A = 16t, B = 24t
-				self.setServoAngle(96)
-			elif (self.sprocket == "B"): 
-				self.setServoAngle(144)
+			self.setServoAngle(96)
 		elif (position == 5): #"revive" fire
-			if (self.sprocket == "A"): #A = 16t, B = 24t
-				self.setServoAngle(144)
-			elif (self.sprocket == "B"): 
-				self.setServoAngle(180)
+			self.setServoAngle(144)
 		else:
 			writeToLog("Incorrect position!")
 
@@ -356,9 +335,10 @@ class SmokeData:
 		self.elapsedTime = time.time() - self.startCookTime
 			
 	def sendEmail(self, msgSubject, msgBody):
+		emailInfo = smtpInfo.readSmtpInfo()	#read info from config file right before sending
 		if len(self.email_list) > 0: 
-			emailserver = smtplib.SMTP(email_smtp_address, email_smtp_port)
-			fromaddr = email_login_name
+			emailserver = smtplib.SMTP(emailInfo.smtp_server, emailInfo.smtp_port)
+			fromaddr = emailInfo.smtp_username
 			msg = MIMEMultipart()
 			msg['Subject'] = msgSubject
 			msg['From'] = fromaddr
@@ -369,11 +349,11 @@ class SmokeData:
 				emailserver.set_debuglevel(True)
 				writeToLog("Attempting to send email...")
 				if (self.mailserverquit): #reconnect if we are sending an email after the first
-					emailserver.connect(email_smtp_address, email_smtp_port)
+					emailserver.connect(emailInfo.smtp_server, emailInfo.smtp_port)
 				emailserver.ehlo()
 				emailserver.starttls()
 				emailserver.ehlo()
-				emailserver.login(email_login_name, email_password)
+				emailserver.login(emailInfo.smtp_username, emailInfo.smtp_password)
 				emailserver.sendmail(fromaddr, self.email_list, msg.as_string())
 				emailserver.quit()
 				self.mailserverquit = True #need to reconnect later if we want to send more mail
@@ -487,7 +467,6 @@ class startIO(threading.Thread):
 		writeToLog("Starting auto ping...")
 		autoPingThread = autoPing()
 		autoPingThread.start()
-		
 		position = 1
 		newPosition = 3
 		while (True):

@@ -20,7 +20,6 @@ class datahandler(threading.Thread):
 	def run(self):
 		while True:
 			webui.currentsmoke.setCurrentTemps(autosmoker.smokeinfo.meatTemp, autosmoker.smokeinfo.smokerTemp)
-			webui.currentsmoke.setSprocket(autosmoker.mySmoker.sprocket) #really only need this once...
 			webui.currentsmoke.setManual(autosmoker.mySmoker.manualServoMode)
 			
 			#update this in case we want to turn it off at any point
@@ -32,10 +31,17 @@ class datahandler(threading.Thread):
 			else: #set from web manual!
 				autosmoker.smokeinfo.setWebManual(True)
 				autosmoker.mySmoker.setServoAngle(webui.currentsmoke.servo)
+			#start recording if webui says to
 			if (autosmoker.smokeinfo.recording == False) and (webui.currentsmoke.recording == True):
 				if (len(webui.currentsmoke.smokefile) > 0):
 					autosmoker.smokeinfo.setFilename(webui.currentsmoke.smokefile)
 				autosmoker.smokeinfo.setRecording(True)
+				autosmoker.writeToLog("Starting recording...")
+			#stop recording if webui says to
+			if (autosmoker.smokeinfo.recording == True) and (webui.currentsmoke.recording == False): #(webui.currentsmoke.stopRecording == True):
+				autosmoker.smokeinfo.setRecording(False)	
+				autosmoker.writeToLog("Stopping recording...")
+				#webui.currentsmoke.setStopRecording(False)
 			if (webui.currentsmoke.changeTargets == True):	
 				autosmoker.smokeinfo.setTargets(webui.currentsmoke.target_meat, webui.currentsmoke.target_smoker,2)
 				webui.currentsmoke.updatedTargets() #tell it that we dont need the new values, now

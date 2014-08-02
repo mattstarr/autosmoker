@@ -8,22 +8,32 @@ import sys, time
 import web
 from web import form
 import threading
+import smtpInfo
 	
 urls = ('/', 'index', 
-		'/infopage.html', 'infopage')
+		'/infopage.html', 'infopage',
+		'/emailsettings.html', 'emailsettings')
 render = web.template.render('templates/')
 
 app = web.application(urls, globals())
 
+#for index
 meat_prompt = 'Target Meat Temp (F):'
 smoker_prompt = 'Target Smoker Temp (F):'
 filename_prompt = 'Output Filename:' 
 webmanual_prompt = 'Manual Door Angle:'
 radio_prompt='Mode:'
 timer_prompt='5 min. Hold on:'
+#for email_settings
+server_prompt = 'Server IP/Hostname:'
+port_prompt = 'Server Port #:'
+username_prompt = 'Username:'
+password_prompt = 'Password:'
 
 startdts = time.strftime("%d%m%y%H%M") #date/time string (minus second)
-
+		
+emailInfo = smtpInfo.readSmtpInfo()	
+		
 class infoHandler:
 	#from autosmoker to webui (mostly)
 	meat_temp = 0
@@ -41,9 +51,12 @@ class infoHandler:
 	recording = False
 	changeTargets = True
 	changeEmails = False
-	sprocket = "A"
 	startWithTimer=True #switch to checkbox later
 	startWithTimerRadio='on'
+	stopRecording = False
+	
+	def setStopRecording(self, newRec):
+		self.stopRecording = newRec
 	
 	def setStartWithTimerRadio(self, newRadio): #cause checkboxes are not working for me
 		self.startWithTimerRadio = newRadio
@@ -55,11 +68,7 @@ class infoHandler:
 	def setStartWithTimer(self, newChecked):
 		self.startWithTimer = newChecked
 	def getDoorAngle(self):
-		sprmult = 0
-		if (self.sprocket == 'A'):
-			sprmult = 0.625
-		else:
-			sprmult = 10/24
+		sprmult = 0.625
 		if (self.manual == False) and (self.radio == 'manual'):
 			return int(self.web_manual_angle)
 		else:
@@ -76,11 +85,7 @@ class infoHandler:
 				self.servo = round(1.6 * newWebManualAngle)
 				if self.servo > 180:
 					self.web_manual_angle = int(180.0 * 0.625)
-					self.servo = 180
-	
-	def setSprocket(self, newSprocket):
-		self.sprocket = newSprocket
-	
+					self.servo = 180		
 	def setCurrentTemps(self, newMeatT, newSmokerT):
 		self.meat_temp = newMeatT
 		self.smoker_temp = newSmokerT	
@@ -125,7 +130,7 @@ def getMainForm():
 			value=', '.join(currentsmoke.email_list)),
 		#allow custom mx form items later - for now, use account at mattstarr.net!
 		form.Button('btn', id="btnSetEmail", value="set", html="Set Email Info"),
-		form.Button('btn', id="btnTestEmail", value="test", html="Send Test Email"),
+		#form.Button('btn', id="btnTestEmail", value="test", html="Send Test Email"),
 		#previously in separate form
 		form.Textbox(filename_prompt, 
 			form.notnull, 
@@ -145,18 +150,39 @@ def getMainForm():
 			value=str(currentsmoke.target_smoker)),	
 		form.Radio('startTimer',[('on','On'),('off','Off')],description=timer_prompt,value=currentsmoke.startWithTimerRadio),
 		form.Button('btn', id="btnStart", value="start", html="Start + Record"),
+		form.Button('btn', id="btnStop", value="stop", html="Stop"),
 		form.Radio('radio',[('auto','Automatic'),('manual','Manual')],description=radio_prompt,value=currentsmoke.radio),
 		form.Textbox(webmanual_prompt, 
 			form.notnull, 
 			form.regexp('\d+', 'Angle must be a digit!'),
-			form.Validator('Must be a number', lambda x: not x or int(x) > 0),
+			form.Validator('Must be a number', lambda x: not x or int(x) >= 0),
 			id="txtWebManualAngle",
 			value=str(currentsmoke.getDoorAngle())),	
 		form.Button('btn', id="btnNewSettings", value="newsettings", html="Enter Settings")
 	)
 	return mainform()
+	
 
-
+def getEmailForm():
+	emailform = form.Form(
+		form.Textbox(server_prompt,
+					id="txtServer",
+					value=str(emailInfo.smtp_server)),
+		form.Textbox(port_prompt,
+					id="txtPort",
+					value=str(emailInfo.smtp_port)),
+		form.Textbox(username_prompt,
+					id="txtUsername",
+					value=emailInfo.smtp_username),
+		form.Password(password_prompt,
+					id="pwdPassword",
+					value=emailInfo.smtp_password),
+		form.Button('btn', id='btnEnter', value='enter', html="Save Settings")
+	)
+	return emailform()
+					
+main_form = getMainForm()
+email_form = getEmailForm()
 
 class index:
 	form = getMainForm()
@@ -169,42 +195,37 @@ class index:
 	
     # POST is called when a web form is submitted
 	def POST(self):
-		#try:
-			#figure out form validation and put here later(?)
-			form = main_form(web.input())
-			if form.btn.value == 'refresh': #do before validate, since we dont care!
-				raise web.seeother('/')
-			if form.validates():
-				if form.btn.value == 'set':
-					#parse comma separated email/text addresses:
-					emails = str(form['Send to:'].value).split(",")
-					currentsmoke.setEmailList(emails)
-				elif form.btn.value == 'test': #currently defunct
-					pass
-					#autosmoker.smokeinfo.sendTestEmail()
-				elif form.btn.value == 'start':
-					#get the smoker and file rolling!!!
-					currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
-					currentsmoke.setFilename(str(form[filename_prompt].value))
-					currentsmoke.setStartWithTimerRadio(form['startTimer'].value)
-					currentsmoke.setRecording(True)
-					print "start"
-				elif form.btn.value == "newsettings":
-					currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
-					currentsmoke.setWebManual(form['radio'].value, float(form[webmanual_prompt].value))
-					currentsmoke.setStartWithTimerRadio(form['startTimer'].value)
-				else:
-					print "What button did you even push?!?!"
-				raise web.seeother('/')
+		form = main_form(web.input())
+		if form.btn.value == 'refresh': #do before validate, since we dont care!
+			raise web.seeother('/')
+		if form.validates():
+			if form.btn.value == 'set':
+				#parse comma separated email/text addresses:
+				emails = str(form['Send to:'].value).split(",")
+				currentsmoke.setEmailList(emails)
+			elif form.btn.value == 'test': #currently defunct
+				pass
+				#autosmoker.smokeinfo.sendTestEmail()
+			elif form.btn.value == 'start':
+				#get the smoker and file rolling!!!
+				currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
+				currentsmoke.setFilename(str(form[filename_prompt].value))
+				currentsmoke.setStartWithTimerRadio(form['startTimer'].value)
+				currentsmoke.setRecording(True)
+				print "start"
+			elif form.btn.value == 'stop':
+				currentsmoke.setRecording(False)
+				#currentsmoke.setStopRecording(True)
+			elif form.btn.value == "newsettings":
+				currentsmoke.setCurrentTargets(int(form[meat_prompt].value), int(form[smoker_prompt].value)) 
+				currentsmoke.setWebManual(form['radio'].value, float(form[webmanual_prompt].value))
+				currentsmoke.setStartWithTimerRadio(form['startTimer'].value)
 			else:
-				raise web.seeother('/')
-				#return render.index(form, "Autosmoker Web UI")
-		#except:
-		#	e = sys.exc_info()
-		#	autosmoker.writeToLog("Exception during index.POST(): " + str(e))	
-		#	pass
-# run
-
+				print "What button did you even push?!?!"
+			raise web.seeother('/')
+		else:
+			raise web.seeother('/')
+			
 #class display:
 class infopage:
 	rendertime = str(datetime.now())
@@ -225,8 +246,8 @@ class infopage:
 			self.smoketimestr = ""
 			self.targetmeat = ""
 			self.targetsmoker = ""
-			if (currentsmoke.getElapsedTime() == 0):
-				self.smoketimestr = "Smoke has not been started."
+			if (currentsmoke.recording == False):
+				self.smoketimestr = "Smoke is not recording."
 				self.targetmeat = "Target meat temperature not yet set."
 				self.targetsmoker = "Target smoker temperature not yet set."
 			else:
@@ -247,13 +268,7 @@ class infopage:
 				else:	
 					self.manmodestr = "Automatic mode engaged."
 			self.servoangle = currentsmoke.servo
-			sprocketmult = 0;
-			if (currentsmoke.sprocket == "A"):
-				sprocketmult = 0.625 #.625 is ratio of sprockets (10:16)
-			elif (currentsmoke.sprocket == "B"):
-				sprocketmult = 0.4166666666666667 #.416666667 is ratio of sprockets (10:24)
-			else:
-				print "wrong sprocket size!"
+			sprocketmult = 0.625 #.625 is ratio of sprockets (10:16)
 			self.doorangle = "{:.2f}".format(float(self.servoangle) * sprocketmult) 
 		except:
 			e = sys.exc_info()
@@ -268,6 +283,19 @@ class infopage:
 		#return render.index(form, "Autosmoker Web UI")	
 
 
+class emailsettings:
+	form = getEmailForm()
+	
+	def GET(self):
+		self.form = getEmailForm()
+		return render.emailsettings(self.form, "Email Settings")
+	def POST(self):
+		form = email_form(web.input())
+		if form.validates():
+			if form.btn.value == 'enter':
+				newEmailSettings = smtpInfo.smtpInfo(form[server_prompt].value, int(form[port_prompt].value), form[username_prompt].value, form[password_prompt].value)
+				smtpInfo.writeSmtpInfo(newEmailSettings)
+			raise web.seeother('/')		
 
 if __name__ == '__main__':
 	app.run()
