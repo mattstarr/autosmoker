@@ -16,17 +16,19 @@ class smtpInfo:
 		self.smtp_password = password
 		
 def readSmtpInfo():
-	with open(filename, 'r') as infile:
-		indata = infile.read()
-	injson = json.loads(indata)
-	#if ("server" in injson) and ("port" in injson) and ("username" in injson) and ("password" in injson):
-	
-	newSmtpInfo = smtpInfo(injson.get('server'), injson.get('port'), injson.get('username'), injson.get('password'))
-	return newSmtpInfo
-	
-	#else:
-	#	print "No file or incorrect JSON information!"
-	#	return smtpInfo("", 587, "", "")
+	injson = ""
+	try:
+		with open(filename, 'r') as infile:
+			indata = infile.read()
+		injson = json.loads(indata)
+	except:
+		print "noooooooooooooooope!"
+	if ("server" in injson) and ("port" in injson) and ("username" in injson) and ("password" in injson):
+		newSmtpInfo = smtpInfo(injson.get('server'), injson.get('port'), injson.get('username'), injson.get('password'))
+		return newSmtpInfo
+	else:
+		print "No file or incorrect JSON information!"
+		return smtpInfo("", 587, "", "")
 		
 def writeSmtpInfo(smtpInfoIn):
 	data = {"server":smtpInfoIn.smtp_server,
